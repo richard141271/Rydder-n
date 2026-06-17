@@ -84,6 +84,50 @@ img {
   min-width: 0;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #e0f2fe;
+  color: #075985;
+  font-weight: 800;
+}
+
+.auth-error {
+  margin: 12px 0 0;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.device-flow-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.device-code {
+  margin-top: 14px;
+  background: #fff;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.device-code strong {
+  display: block;
+  font-size: 1.7rem;
+  letter-spacing: 0.12em;
+  margin-top: 6px;
+}
+
 .topbar h1,
 .panel-header h2,
 .report-card h3,

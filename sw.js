@@ -1,12 +1,14 @@
-const CACHE_NAME = "rydderen-shell-v6";
+const CACHE_NAME = "rydderen-shell-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./db.js",
-  "./projects.js",
-  "./valuation.js",
+  "./config.js",
+  "./offlineDb.js",
+  "./storageProvider.js",
+  "./githubAuth.js",
+  "./githubStorageProvider.js",
   "./manifest.json",
 ];
 

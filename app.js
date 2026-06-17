@@ -1,13 +1,23 @@
+import { APP_CONFIG } from "./config.js";
 import {
-  deleteProjectAndData,
-  getAllItems,
-  getDefaultProjectId,
-  getProjectCosts,
-  saveItem,
-  saveProjectCost,
-} from "./db.js";
-import { addProject, ensureProjects, getProjectById, setActiveProject } from "./projects.js";
-import { buildValuationPatch, getItemsWithoutValue, getTotalItemValue, sanitizeValue } from "./valuation.js";
+  clearStoredToken,
+  getStoredToken,
+  getStoredUser,
+  pollDeviceFlowToken,
+  setStoredToken,
+  setStoredUser,
+  startDeviceFlow,
+} from "./githubAuth.js";
+import { GitHubStorageProvider } from "./githubStorageProvider.js";
+import {
+  deleteQueuedMutation,
+  enqueueMutation,
+  getCache,
+  getQueuedMutations,
+  getSetting,
+  setCache,
+  setSetting,
+} from "./offlineDb.js";
 
 const CATEGORIES = [
   "Materialer",
@@ -28,15 +38,24 @@ const state = {
     previewUrl: "",
     category: "",
   },
-  items: [],
   projects: [],
-  costs: [],
+  currentProject: null,
   activeProjectId: "",
   filter: "Alle",
   currentView: "captureView",
   deferredInstallPrompt: null,
   renderedImageUrls: [],
   valuationImageUrl: "",
+  auth: {
+    token: "",
+    user: null,
+    deviceFlow: null,
+    polling: false,
+  },
+  sync: {
+    running: false,
+    lastError: "",
+  },
 };
 
 const elements = {
@@ -46,6 +65,16 @@ const elements = {
   valuationView: document.querySelector("#valuationView"),
   overviewView: document.querySelector("#overviewView"),
   activeProjectSelect: document.querySelector("#activeProjectSelect"),
+  authView: document.querySelector("#authView"),
+  authStatus: document.querySelector("#authStatus"),
+  loginButton: document.querySelector("#loginButton"),
+  logoutButton: document.querySelector("#logoutButton"),
+  startDeviceFlowButton: document.querySelector("#startDeviceFlowButton"),
+  deviceFlowCard: document.querySelector("#deviceFlowCard"),
+  deviceFlowLink: document.querySelector("#deviceFlowLink"),
+  copyUserCodeButton: document.querySelector("#copyUserCodeButton"),
+  deviceUserCode: document.querySelector("#deviceUserCode"),
+  authError: document.querySelector("#authError"),
   photoInput: document.querySelector("#photoInput"),
   draftPreview: document.querySelector("#draftPreview"),
   previewImage: document.querySelector("#previewImage"),
@@ -93,6 +122,9 @@ const elements = {
   moreFields: document.querySelector("#moreFields"),
 };
 
+const storage = new GitHubStorageProvider(APP_CONFIG.github);
+const ACTIVE_PROJECT_KEY = "activeProjectId";
+
 function formatDate(timestamp) {
   return new Intl.DateTimeFormat("nb-NO", {
     year: "numeric",
@@ -109,21 +141,23 @@ function formatCurrency(value) {
   }).format(value || 0);
 }
 
-function createObjectLabel(sequence) {
-  return `Objekt #${String(sequence).padStart(3, "0")}`;
+function createObjectLabel(id) {
+  if (typeof id === "number") {
+    return `Objekt #${String(id).padStart(4, "0")}`;
+  }
+  return "Objekt (venter synk)";
 }
 
-function getNextSequence() {
-  const maxSequence = state.items.reduce((max, item) => Math.max(max, item.sequence || 0), 0);
-  return maxSequence + 1;
+function getRawBaseUrl() {
+  return `https://raw.githubusercontent.com/${APP_CONFIG.github.owner}/${APP_CONFIG.github.repo}/${APP_CONFIG.github.branch}`;
 }
 
 function getActiveProject() {
-  return getProjectById(state.projects, state.activeProjectId);
+  return state.projects.find((project) => project.id === state.activeProjectId) || null;
 }
 
 function getActiveProjectItems() {
-  return state.items.filter((item) => item.projectId === state.activeProjectId);
+  return state.currentProject?.items || [];
 }
 
 function getFilteredItems() {
@@ -132,7 +166,7 @@ function getFilteredItems() {
 }
 
 function getActiveProjectCosts() {
-  return state.costs.filter((cost) => cost.projectId === state.activeProjectId);
+  return state.currentProject?.costs || [];
 }
 
 function getTotalProjectCost() {
@@ -140,7 +174,14 @@ function getTotalProjectCost() {
 }
 
 function setVisibleView(viewName) {
-  const allViews = ["captureView", "categoryView", "actionView", "valuationView", "overviewView"];
+  const allViews = [
+    "authView",
+    "captureView",
+    "categoryView",
+    "actionView",
+    "valuationView",
+    "overviewView",
+  ];
   for (const name of allViews) {
     elements[name].classList.toggle("hidden", name !== viewName);
   }
@@ -228,6 +269,17 @@ function cleanupValuationImage() {
 }
 
 function renderProjectSelect() {
+  if (state.projects.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Ingen prosjekter";
+    option.selected = true;
+    elements.activeProjectSelect.replaceChildren(option);
+    elements.activeProjectSelect.disabled = true;
+    return;
+  }
+
+  elements.activeProjectSelect.disabled = false;
   const options = state.projects.map((project) => {
     const option = document.createElement("option");
     option.value = project.id;
@@ -240,7 +292,6 @@ function renderProjectSelect() {
 }
 
 function renderProjectList() {
-  const defaultProjectId = getDefaultProjectId();
   const rows = state.projects.map((project) => {
     const row = document.createElement("div");
     row.className = "list-row";
@@ -255,14 +306,12 @@ function renderProjectList() {
     title.textContent = project.name;
     header.append(title);
 
-    if (project.id !== defaultProjectId) {
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.className = "mini-danger-button";
-      deleteButton.textContent = "Slett";
-      deleteButton.addEventListener("click", () => handleDeleteProject(project.id));
-      header.append(deleteButton);
-    }
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "mini-danger-button";
+    deleteButton.textContent = "Slett";
+    deleteButton.addEventListener("click", () => handleDeleteProject(project.id));
+    header.append(deleteButton);
 
     const meta = document.createElement("p");
     meta.className = "list-line";
@@ -272,9 +321,9 @@ function renderProjectList() {
     row.append(left);
     return row;
   });
-
   elements.projectList.replaceChildren(...rows);
 }
+
 
 function renderCategoryButtons() {
   elements.categoryButtons.replaceChildren(
@@ -368,7 +417,7 @@ function renderCostList() {
 function renderReportSummary() {
   const project = getActiveProject();
   const items = getActiveProjectItems();
-  const totalValue = getTotalItemValue(state.items, state.activeProjectId);
+  const totalValue = items.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
   const totalCost = getTotalProjectCost();
   const netValue = totalValue - totalCost;
 
@@ -394,16 +443,23 @@ function renderItemsList() {
   const cards = filteredItems.map((item) => {
     const node = elements.itemCardTemplate.content.firstElementChild.cloneNode(true);
     const image = node.querySelector(".item-image");
-    const imageUrl = URL.createObjectURL(item.imageBlob);
+    let imageUrl = "";
+    if (item.imageBlob) {
+      imageUrl = URL.createObjectURL(item.imageBlob);
+      state.renderedImageUrls.push(imageUrl);
+    } else if (item.image && item.image.startsWith("/")) {
+      imageUrl = `${getRawBaseUrl()}${item.image}`;
+    }
 
-    state.renderedImageUrls.push(imageUrl);
-
-    image.src = imageUrl;
-    image.alt = `Bilde for ${createObjectLabel(item.sequence)}`;
-    node.querySelector(".item-id").textContent = createObjectLabel(item.sequence);
+    if (imageUrl) {
+      image.src = imageUrl;
+    }
+    image.alt = `Bilde for ${createObjectLabel(item.id)}`;
+    node.querySelector(".item-id").textContent = createObjectLabel(item.id);
     node.querySelector(".item-action").textContent = item.action;
     node.querySelector(".item-meta").textContent = `Kategori: ${item.category}`;
-    node.querySelector(".item-date").textContent = `Dato: ${item.date}`;
+    const dateText = item.createdAt ? formatDate(Date.parse(item.createdAt)) : "";
+    node.querySelector(".item-date").textContent = dateText ? `Dato: ${dateText}` : "";
     node.querySelector(".item-value").textContent =
       item.value === null ? "Verdi mangler" : `Verdi: ${formatCurrency(item.value)}`;
     return node;
@@ -425,7 +481,9 @@ function renderOverview() {
 function renderValuation() {
   cleanupValuationImage();
 
-  const itemsWithoutValue = getItemsWithoutValue(state.items, state.activeProjectId);
+  const itemsWithoutValue = getActiveProjectItems().filter(
+    (item) => typeof item.id === "number" && (item.value === null || item.value === ""),
+  );
   const currentItem = itemsWithoutValue[0];
 
   elements.moreFields.classList.add("hidden");
@@ -440,12 +498,14 @@ function renderValuation() {
     return;
   }
 
-  state.valuationImageUrl = URL.createObjectURL(currentItem.imageBlob);
-  elements.valuationImage.src = state.valuationImageUrl;
-  elements.valuationObjectId.textContent = createObjectLabel(currentItem.sequence);
+  if (currentItem.image && currentItem.image.startsWith("/")) {
+    elements.valuationImage.src = `${getRawBaseUrl()}${currentItem.image}`;
+  }
+  elements.valuationObjectId.textContent = createObjectLabel(currentItem.id);
   elements.valuationCategory.textContent = `Kategori: ${currentItem.category}`;
   elements.valuationAction.textContent = `Handling: ${currentItem.action}`;
-  elements.valuationDate.textContent = `Dato: ${currentItem.date}`;
+  const dateText = currentItem.createdAt ? formatDate(Date.parse(currentItem.createdAt)) : "";
+  elements.valuationDate.textContent = dateText ? `Dato: ${dateText}` : "";
   elements.priceInput.value = "";
   elements.commentInput.value = currentItem.comment || "";
   elements.conditionInput.value = currentItem.condition || "";
@@ -457,29 +517,60 @@ async function saveDraft(action) {
   if (!state.draft.imageBlob || !state.draft.category || !state.activeProjectId) {
     return;
   }
+  if (!state.currentProject) {
+    return;
+  }
 
-  const createdAt = Date.now();
-  const item = {
-    id: crypto.randomUUID(),
-    sequence: getNextSequence(),
-    createdAt,
-    date: formatDate(createdAt),
-    imageBlob: state.draft.imageBlob,
+  const projectId = state.activeProjectId;
+  const itemDraft = {
     category: state.draft.category,
     action,
-    projectId: state.activeProjectId,
+    imageBlob: state.draft.imageBlob,
+  };
+
+  const optimisticId = `local-${crypto.randomUUID()}`;
+  const optimistic = {
+    id: optimisticId,
+    projectId,
+    category: itemDraft.category,
+    action: itemDraft.action,
     value: null,
     comment: "",
     condition: "",
     note: "",
+    imageBlob: itemDraft.imageBlob,
+    createdAt: new Date().toISOString(),
+    pending: true,
   };
 
-  await saveItem(item);
-  state.items = [item, ...state.items];
+  state.currentProject.items = [optimistic, ...(state.currentProject.items || [])];
+  await setCache(`project:${projectId}`, state.currentProject);
   renderOverview();
-  resetDraft();
-  showRegisterCapture();
-  tryOpenCamera();
+
+  try {
+    if (!navigator.onLine) {
+      throw new Error("offline");
+    }
+
+    const item = await storage.addItem(projectId, itemDraft);
+    await loadProject(projectId);
+    await deleteOptimisticItem(projectId, optimisticId);
+    resetDraft();
+    showRegisterCapture();
+    tryOpenCamera();
+    return item;
+  } catch {
+    await enqueueMutation({
+      type: "addItem",
+      projectId,
+      createdAt: Date.now(),
+      payload: { optimisticId, itemDraft },
+    });
+    resetDraft();
+    showRegisterCapture();
+    tryOpenCamera();
+    return null;
+  }
 }
 
 async function handlePhotoChange(event) {
@@ -496,105 +587,143 @@ async function handlePhotoChange(event) {
   showCategoryStep();
 }
 
-async function handleActiveProjectChange() {
-  state.activeProjectId = elements.activeProjectSelect.value;
-  await setActiveProject(state.activeProjectId);
-  renderOverview();
-
-  if (state.currentView === "valuationView") {
-    renderValuation();
-  }
-}
-
 async function handleAddProject() {
-  const newProject = await addProject(elements.newProjectInput.value);
-  if (!newProject) {
+  const name = (elements.newProjectInput.value || "").trim();
+  if (!name) {
     return;
   }
 
   elements.newProjectInput.value = "";
-  const ensured = await ensureProjects();
-  state.projects = ensured.projects;
-  state.activeProjectId = newProject.id;
-  await setActiveProject(newProject.id);
-  renderOverview();
-  renderProjectSelect();
+
+  try {
+    const project = await storage.createProject(name);
+    await loadProjects();
+    state.activeProjectId = project.id;
+    await setSetting(ACTIVE_PROJECT_KEY, project.id);
+    await loadProject(project.id);
+    renderOverview();
+  } catch (error) {
+    showAuthError(error?.message || "Kunne ikke opprette prosjekt.");
+  }
 }
 
 async function handleDeleteProject(projectId) {
-  const defaultProjectId = getDefaultProjectId();
-  if (projectId === defaultProjectId) {
-    return;
-  }
-
-  const project = getProjectById(state.projects, projectId);
+  const project = state.projects.find((entry) => entry.id === projectId);
   if (!project) {
     return;
   }
 
-  const projectItemsCount = state.items.filter((item) => item.projectId === projectId).length;
-  const projectCostsCount = state.costs.filter((cost) => cost.projectId === projectId).length;
-  const message = `Slette prosjekt "${project.name}"?\n\nDette sletter også ${projectItemsCount} objekter og ${projectCostsCount} kostnader.`;
+  const message = `Slette prosjekt "${project.name}"?\n\nDette sletter prosjektfilen og alle bilder i GitHub.`;
 
   if (!window.confirm(message)) {
     return;
   }
 
-  await deleteProjectAndData(projectId);
-  state.items = state.items.filter((item) => item.projectId !== projectId);
-  state.costs = state.costs.filter((cost) => cost.projectId !== projectId);
-
-  const ensured = await ensureProjects();
-  state.projects = ensured.projects;
-  state.activeProjectId = ensured.activeProjectId;
-  renderOverview();
-
-  if (state.currentView === "valuationView") {
-    renderValuation();
+  try {
+    if (!navigator.onLine) {
+      throw new Error("offline");
+    }
+    await storage.deleteProject(projectId);
+  } catch {
+    await enqueueMutation({
+      type: "deleteProject",
+      projectId,
+      createdAt: Date.now(),
+      payload: {},
+    });
   }
+
+  await loadProjects();
+  const fallback = state.projects[0]?.id || "";
+  state.activeProjectId = projectId === state.activeProjectId ? fallback : state.activeProjectId;
+  await setSetting(ACTIVE_PROJECT_KEY, state.activeProjectId);
+  if (state.activeProjectId) {
+    await loadProject(state.activeProjectId);
+  }
+  renderOverview();
 }
 
 async function handleAddCost() {
-  const amount = sanitizeValue(elements.costAmountInput.value);
-  if (amount === null) {
+  if (!state.activeProjectId || !state.currentProject) {
+    return;
+  }
+  const amount = Number(String(elements.costAmountInput.value || "").trim());
+  if (!Number.isFinite(amount) || amount < 0) {
     elements.costAmountInput.focus();
     return;
   }
 
-  const cost = {
+  const entry = {
     id: crypto.randomUUID(),
-    projectId: state.activeProjectId,
     type: elements.costTypeSelect.value,
     amount,
-    createdAt: Date.now(),
+    createdAt: new Date().toISOString(),
   };
 
-  await saveProjectCost(cost);
-  state.costs = [cost, ...state.costs];
   elements.costAmountInput.value = "";
+  const projectId = state.activeProjectId;
+
+  const optimistic = { ...entry, pending: true };
+  state.currentProject.costs = [optimistic, ...(state.currentProject.costs || [])];
+  await setCache(`project:${projectId}`, state.currentProject);
+  renderOverview();
+
+  try {
+    if (!navigator.onLine) {
+      throw new Error("offline");
+    }
+    await storage.addCost(projectId, entry);
+    await loadProject(projectId);
+  } catch {
+    await enqueueMutation({
+      type: "addCost",
+      projectId,
+      createdAt: Date.now(),
+      payload: { entry },
+    });
+  }
   renderOverview();
 }
 
 async function handleValuationNext() {
-  const itemsWithoutValue = getItemsWithoutValue(state.items, state.activeProjectId);
+  const itemsWithoutValue = getActiveProjectItems().filter(
+    (item) => typeof item.id === "number" && (item.value === null || item.value === ""),
+  );
   const currentItem = itemsWithoutValue[0];
-  const value = sanitizeValue(elements.priceInput.value);
+  const value = Number(String(elements.priceInput.value || "").trim());
 
-  if (!currentItem || value === null) {
+  if (!currentItem || !Number.isFinite(value)) {
     focusPriceInput();
     return;
   }
 
-  const updatedItem = buildValuationPatch(currentItem, {
+  const patch = {
     value,
     comment: elements.commentInput.value,
     condition: elements.conditionInput.value,
     note: elements.noteInput.value,
-  });
+  };
 
-  await saveItem(updatedItem);
-  state.items = state.items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
+  const projectId = state.activeProjectId;
+  applyLocalItemPatch(currentItem.id, patch);
+  await setCache(`project:${projectId}`, state.currentProject);
   renderOverview();
+
+  try {
+    if (!navigator.onLine) {
+      throw new Error("offline");
+    }
+    await storage.updateItem(projectId, currentItem.id, patch);
+    await loadProject(projectId);
+  } catch {
+    await enqueueMutation({
+      type: "updateItem",
+      projectId,
+      createdAt: Date.now(),
+      payload: { itemId: currentItem.id, patch },
+    });
+  }
+
   renderValuation();
 }
 
@@ -632,7 +761,12 @@ function setupInstallPrompt() {
 
 function bindEvents() {
   elements.photoInput.addEventListener("change", handlePhotoChange);
-  elements.activeProjectSelect.addEventListener("change", handleActiveProjectChange);
+  elements.activeProjectSelect.addEventListener("change", async () => {
+    state.activeProjectId = elements.activeProjectSelect.value;
+    await setSetting(ACTIVE_PROJECT_KEY, state.activeProjectId);
+    await loadProject(state.activeProjectId);
+    renderOverview();
+  });
   elements.backToCaptureButton.addEventListener("click", showRegisterCapture);
   elements.backToCategoryButton.addEventListener("click", showCategoryStep);
   elements.exitFromCaptureButton.addEventListener("click", exitRegistration);
@@ -656,14 +790,256 @@ function bindEvents() {
       handleValuationNext();
     }
   });
+
+  elements.loginButton.addEventListener("click", () => showAuthView());
+  elements.logoutButton.addEventListener("click", handleLogout);
+  elements.startDeviceFlowButton.addEventListener("click", handleStartDeviceFlow);
+  elements.copyUserCodeButton.addEventListener("click", async () => {
+    const code = elements.deviceUserCode.textContent || "";
+    if (!code) {
+      return;
+    }
+    await navigator.clipboard.writeText(code);
+  });
+
+  window.addEventListener("online", () => {
+    syncQueue();
+  });
 }
 
-async function loadState() {
-  const ensured = await ensureProjects();
-  state.projects = ensured.projects;
-  state.activeProjectId = ensured.activeProjectId;
-  state.items = await getAllItems();
-  state.costs = await getProjectCosts();
+function showAuthError(message) {
+  elements.authError.textContent = message;
+  elements.authError.classList.toggle("hidden", !message);
+}
+
+function updateAuthUi() {
+  const isAuthed = storage.isAuthenticated();
+  elements.loginButton.classList.toggle("hidden", isAuthed);
+  elements.logoutButton.classList.toggle("hidden", !isAuthed);
+
+  const label = isAuthed
+    ? `GitHub: ${state.auth.user?.login || "pålogget"}`
+    : "GitHub: ikke innlogget";
+  elements.authStatus.textContent = label;
+  elements.authStatus.classList.remove("hidden");
+}
+
+function showAuthView() {
+  showAuthError("");
+  elements.deviceFlowCard.classList.add("hidden");
+  setVisibleView("authView");
+}
+
+async function handleLogout() {
+  await clearStoredToken();
+  storage.setToken("");
+  state.auth.user = null;
+  state.projects = [];
+  state.currentProject = null;
+  state.activeProjectId = "";
+  updateAuthUi();
+  showAuthView();
+}
+
+async function handleStartDeviceFlow() {
+  showAuthError("");
+
+  if (!APP_CONFIG.github.clientId) {
+    showAuthError("Mangler GitHub clientId i config.js.");
+    return;
+  }
+
+  try {
+    const flow = await startDeviceFlow({
+      clientId: APP_CONFIG.github.clientId,
+      scope: APP_CONFIG.github.scope,
+    });
+
+    state.auth.deviceFlow = flow;
+    elements.deviceFlowLink.href = flow.verification_uri;
+    elements.deviceUserCode.textContent = flow.user_code;
+    elements.deviceFlowCard.classList.remove("hidden");
+    startPollingForToken();
+  } catch (error) {
+    showAuthError(error?.message || "Kunne ikke starte innlogging.");
+  }
+}
+
+async function startPollingForToken() {
+  if (state.auth.polling) {
+    return;
+  }
+
+  state.auth.polling = true;
+  const flow = state.auth.deviceFlow;
+  let intervalMs = Math.max(1, Number(flow.interval) || 5) * 1000;
+  const expiresAt = Date.now() + (Number(flow.expires_in) || 900) * 1000;
+
+  while (Date.now() < expiresAt) {
+    try {
+      const data = await pollDeviceFlowToken({
+        clientId: APP_CONFIG.github.clientId,
+        deviceCode: flow.device_code,
+      });
+
+      if (data.access_token) {
+        await setStoredToken(data.access_token);
+        storage.setToken(data.access_token);
+        const user = await storage.getUser();
+        state.auth.user = user;
+        await setStoredUser(user);
+        updateAuthUi();
+        await loadProjects();
+        await ensureActiveProject();
+        renderOverview();
+        showRegisterCapture();
+        syncQueue();
+        state.auth.polling = false;
+        return;
+      }
+
+      if (data.error === "authorization_pending") {
+        await delay(intervalMs);
+        continue;
+      }
+
+      if (data.error === "slow_down") {
+        intervalMs += 2000;
+        await delay(intervalMs);
+        continue;
+      }
+
+      if (data.error === "access_denied") {
+        showAuthError("Innlogging avbrutt.");
+        break;
+      }
+
+      if (data.error === "expired_token") {
+        showAuthError("Koden er utløpt. Start innlogging på nytt.");
+        break;
+      }
+
+      showAuthError("Kunne ikke fullføre innlogging.");
+      break;
+    } catch (error) {
+      showAuthError(error?.message || "Kunne ikke fullføre innlogging.");
+      break;
+    }
+  }
+
+  state.auth.polling = false;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function loadProjects() {
+  try {
+    const projects = await storage.listProjects();
+    state.projects = projects;
+    await setCache("projects:list", projects);
+  } catch {
+    const cached = (await getCache("projects:list")) || [];
+    state.projects = cached;
+  }
+}
+
+async function loadProject(projectId) {
+  if (!projectId) {
+    state.currentProject = null;
+    return;
+  }
+
+  try {
+    const project = await storage.getProject(projectId);
+    state.currentProject = project;
+    await setCache(`project:${projectId}`, project);
+  } catch {
+    const cached = await getCache(`project:${projectId}`);
+    state.currentProject = cached;
+  }
+}
+
+async function ensureActiveProject() {
+  let activeProjectId = (await getSetting(ACTIVE_PROJECT_KEY)) || "";
+  if (!activeProjectId || !state.projects.some((project) => project.id === activeProjectId)) {
+    activeProjectId = state.projects[0]?.id || "";
+    if (activeProjectId) {
+      await setSetting(ACTIVE_PROJECT_KEY, activeProjectId);
+    }
+  }
+
+  state.activeProjectId = activeProjectId;
+  renderProjectSelect();
+  await loadProject(activeProjectId);
+}
+
+function applyLocalItemPatch(itemId, patch) {
+  if (!state.currentProject) {
+    return;
+  }
+
+  state.currentProject.items = (state.currentProject.items || []).map((item) =>
+    item.id === itemId ? { ...item, ...patch } : item,
+  );
+}
+
+async function deleteOptimisticItem(projectId, optimisticId) {
+  const cached = await getCache(`project:${projectId}`);
+  if (cached && Array.isArray(cached.items)) {
+    cached.items = cached.items.filter((item) => item.id !== optimisticId);
+    await setCache(`project:${projectId}`, cached);
+  }
+}
+
+async function syncQueue() {
+  if (state.sync.running) {
+    return;
+  }
+  if (!navigator.onLine || !storage.isAuthenticated()) {
+    return;
+  }
+
+  state.sync.running = true;
+  state.sync.lastError = "";
+
+  try {
+    const queue = await getQueuedMutations();
+    for (const entry of queue) {
+      if (entry.type === "addItem") {
+        await storage.addItem(entry.projectId, entry.payload.itemDraft);
+        if (entry.payload.optimisticId) {
+          await deleteOptimisticItem(entry.projectId, entry.payload.optimisticId);
+        }
+        await deleteQueuedMutation(entry.id);
+        continue;
+      }
+      if (entry.type === "updateItem") {
+        await storage.updateItem(entry.projectId, entry.payload.itemId, entry.payload.patch);
+        await deleteQueuedMutation(entry.id);
+        continue;
+      }
+      if (entry.type === "addCost") {
+        await storage.addCost(entry.projectId, entry.payload.entry);
+        await deleteQueuedMutation(entry.id);
+        continue;
+      }
+      if (entry.type === "deleteProject") {
+        await storage.deleteProject(entry.projectId);
+        await deleteQueuedMutation(entry.id);
+        continue;
+      }
+    }
+
+    await loadProjects();
+    await ensureActiveProject();
+    renderOverview();
+  } catch (error) {
+    state.sync.lastError = error?.message || "Kunne ikke synkronisere.";
+  } finally {
+    state.sync.running = false;
+  }
 }
 
 async function init() {
@@ -672,9 +1048,28 @@ async function init() {
   bindEvents();
   setupInstallPrompt();
   registerServiceWorker();
-  await loadState();
+
+  const token = await getStoredToken();
+  if (token) {
+    storage.setToken(token);
+    state.auth.user = (await getStoredUser()) || (await storage.getUser().catch(() => null));
+    if (state.auth.user) {
+      await setStoredUser(state.auth.user);
+    }
+  }
+
+  updateAuthUi();
+
+  if (!storage.isAuthenticated()) {
+    showAuthView();
+    return;
+  }
+
+  await loadProjects();
+  await ensureActiveProject();
   renderOverview();
   showRegisterCapture();
+  syncQueue();
 }
 
 init().catch((error) => {
