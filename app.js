@@ -1,4 +1,6 @@
-import { clearItems, getAllItems, saveItem } from "./db.js";
+import { clearAllData, getAllItems, getProjectCosts, saveItem, saveProjectCost } from "./db.js";
+import { addProject, ensureProjects, getProjectById, setActiveProject } from "./projects.js";
+import { buildValuationPatch, getItemsWithoutValue, getTotalItemValue, sanitizeValue } from "./valuation.js";
 
 const CATEGORIES = [
   "Materialer",
@@ -20,29 +22,36 @@ const state = {
     category: "",
   },
   items: [],
+  projects: [],
+  costs: [],
+  activeProjectId: "",
   filter: "Alle",
+  currentView: "captureView",
   deferredInstallPrompt: null,
   renderedImageUrls: [],
+  valuationImageUrl: "",
 };
 
 const elements = {
   captureView: document.querySelector("#captureView"),
   categoryView: document.querySelector("#categoryView"),
   actionView: document.querySelector("#actionView"),
-  savedView: document.querySelector("#savedView"),
+  valuationView: document.querySelector("#valuationView"),
   overviewView: document.querySelector("#overviewView"),
+  activeProjectSelect: document.querySelector("#activeProjectSelect"),
   photoInput: document.querySelector("#photoInput"),
   draftPreview: document.querySelector("#draftPreview"),
   previewImage: document.querySelector("#previewImage"),
   categoryButtons: document.querySelector("#categoryButtons"),
   actionButtons: document.querySelector("#actionButtons"),
   selectedCategoryBadge: document.querySelector("#selectedCategoryBadge"),
-  savedSummary: document.querySelector("#savedSummary"),
   backToCaptureButton: document.querySelector("#backToCaptureButton"),
   backToCategoryButton: document.querySelector("#backToCategoryButton"),
-  nextObjectButton: document.querySelector("#nextObjectButton"),
-  finishButton: document.querySelector("#finishButton"),
+  exitFromCaptureButton: document.querySelector("#exitFromCaptureButton"),
+  exitFromCategoryButton: document.querySelector("#exitFromCategoryButton"),
+  exitFromActionButton: document.querySelector("#exitFromActionButton"),
   showRegisterButton: document.querySelector("#showRegisterButton"),
+  showValuationButton: document.querySelector("#showValuationButton"),
   showOverviewButton: document.querySelector("#showOverviewButton"),
   statsGrid: document.querySelector("#statsGrid"),
   filterButtons: document.querySelector("#filterButtons"),
@@ -54,6 +63,28 @@ const elements = {
   printButton: document.querySelector("#printButton"),
   clearDataButton: document.querySelector("#clearDataButton"),
   installButton: document.querySelector("#installButton"),
+  newProjectInput: document.querySelector("#newProjectInput"),
+  addProjectButton: document.querySelector("#addProjectButton"),
+  projectList: document.querySelector("#projectList"),
+  costTypeSelect: document.querySelector("#costTypeSelect"),
+  costAmountInput: document.querySelector("#costAmountInput"),
+  addCostButton: document.querySelector("#addCostButton"),
+  costList: document.querySelector("#costList"),
+  valuationEmptyState: document.querySelector("#valuationEmptyState"),
+  valuationCard: document.querySelector("#valuationCard"),
+  valuationImage: document.querySelector("#valuationImage"),
+  valuationObjectId: document.querySelector("#valuationObjectId"),
+  valuationCategory: document.querySelector("#valuationCategory"),
+  valuationAction: document.querySelector("#valuationAction"),
+  valuationDate: document.querySelector("#valuationDate"),
+  priceInput: document.querySelector("#priceInput"),
+  commentInput: document.querySelector("#commentInput"),
+  conditionInput: document.querySelector("#conditionInput"),
+  noteInput: document.querySelector("#noteInput"),
+  valuationNextButton: document.querySelector("#valuationNextButton"),
+  valuationMoreButton: document.querySelector("#valuationMoreButton"),
+  valuationExitButton: document.querySelector("#valuationExitButton"),
+  moreFields: document.querySelector("#moreFields"),
 };
 
 function formatDate(timestamp) {
@@ -62,6 +93,14 @@ function formatDate(timestamp) {
     month: "2-digit",
     day: "2-digit",
   }).format(timestamp);
+}
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("nb-NO", {
+    style: "currency",
+    currency: "NOK",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
 }
 
 function createObjectLabel(sequence) {
@@ -73,15 +112,53 @@ function getNextSequence() {
   return maxSequence + 1;
 }
 
+function getActiveProject() {
+  return getProjectById(state.projects, state.activeProjectId);
+}
+
+function getActiveProjectItems() {
+  return state.items.filter((item) => item.projectId === state.activeProjectId);
+}
+
+function getFilteredItems() {
+  const items = getActiveProjectItems();
+  return state.filter === "Alle" ? items : items.filter((item) => item.action === state.filter);
+}
+
+function getActiveProjectCosts() {
+  return state.costs.filter((cost) => cost.projectId === state.activeProjectId);
+}
+
+function getTotalProjectCost() {
+  return getActiveProjectCosts().reduce((sum, cost) => sum + (Number(cost.amount) || 0), 0);
+}
+
 function setVisibleView(viewName) {
-  const allViews = ["captureView", "categoryView", "actionView", "savedView", "overviewView"];
+  const allViews = ["captureView", "categoryView", "actionView", "valuationView", "overviewView"];
   for (const name of allViews) {
     elements[name].classList.toggle("hidden", name !== viewName);
   }
 
-  const registerActive = viewName !== "overviewView";
-  elements.showRegisterButton.classList.toggle("active", registerActive);
-  elements.showOverviewButton.classList.toggle("active", !registerActive);
+  state.currentView = viewName;
+  elements.showRegisterButton.classList.toggle(
+    "active",
+    ["captureView", "categoryView", "actionView"].includes(viewName),
+  );
+  elements.showValuationButton.classList.toggle("active", viewName === "valuationView");
+  elements.showOverviewButton.classList.toggle("active", viewName === "overviewView");
+}
+
+function focusPriceInput() {
+  window.setTimeout(() => {
+    elements.priceInput.focus();
+    elements.priceInput.select();
+  }, 50);
+}
+
+function tryOpenCamera() {
+  window.setTimeout(() => {
+    elements.photoInput.click();
+  }, 80);
 }
 
 function showRegisterCapture() {
@@ -97,20 +174,14 @@ function showActionStep() {
   setVisibleView("actionView");
 }
 
-function showSavedStep(item) {
-  elements.savedSummary.innerHTML = [
-    `<p><strong>${createObjectLabel(item.sequence)}</strong></p>`,
-    `<p>Kategori: ${item.category}</p>`,
-    `<p>Handling: ${item.action}</p>`,
-    `<p>Dato: ${item.date}</p>`,
-    "<p>Bilde: Lagret</p>",
-  ].join("");
-  setVisibleView("savedView");
-}
-
 function showOverview() {
   renderOverview();
   setVisibleView("overviewView");
+}
+
+function showValuation() {
+  setVisibleView("valuationView");
+  renderValuation();
 }
 
 function resetDraft() {
@@ -127,6 +198,55 @@ function resetDraft() {
   elements.photoInput.value = "";
   elements.previewImage.removeAttribute("src");
   elements.draftPreview.classList.add("hidden");
+}
+
+function exitRegistration() {
+  resetDraft();
+  showOverview();
+}
+
+function cleanupRenderedImages() {
+  for (const url of state.renderedImageUrls) {
+    URL.revokeObjectURL(url);
+  }
+  state.renderedImageUrls = [];
+}
+
+function cleanupValuationImage() {
+  if (!state.valuationImageUrl) {
+    return;
+  }
+
+  URL.revokeObjectURL(state.valuationImageUrl);
+  state.valuationImageUrl = "";
+}
+
+function renderProjectSelect() {
+  const options = state.projects.map((project) => {
+    const option = document.createElement("option");
+    option.value = project.id;
+    option.textContent = project.name;
+    option.selected = project.id === state.activeProjectId;
+    return option;
+  });
+
+  elements.activeProjectSelect.replaceChildren(...options);
+}
+
+function renderProjectList() {
+  const rows = state.projects.map((project) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.innerHTML = `
+      <div>
+        <strong>${project.name}</strong>
+        <p class="list-line">${project.id === state.activeProjectId ? "Aktivt prosjekt" : "Prosjekt"}</p>
+      </div>
+    `;
+    return row;
+  });
+
+  elements.projectList.replaceChildren(...rows);
 }
 
 function renderCategoryButtons() {
@@ -175,16 +295,13 @@ function renderFilterButtons() {
   );
 }
 
-function countByAction(action) {
-  return state.items.filter((item) => item.action === action).length;
-}
-
 function renderStats() {
+  const items = getActiveProjectItems();
   const stats = [
-    { label: "Kast", value: countByAction("Kast") },
-    { label: "Selg", value: countByAction("Selg") },
-    { label: "Behold", value: countByAction("Behold") },
-    { label: "Totalt", value: state.items.length },
+    { label: "Kast", value: items.filter((item) => item.action === "Kast").length },
+    { label: "Selg", value: items.filter((item) => item.action === "Selg").length },
+    { label: "Behold", value: items.filter((item) => item.action === "Behold").length },
+    { label: "Totalt", value: items.length },
   ];
 
   elements.statsGrid.replaceChildren(
@@ -197,34 +314,55 @@ function renderStats() {
   );
 }
 
-function renderReportSummary() {
-  const today = formatDate(Date.now());
-  elements.reportDate.textContent = `Dato: ${today}`;
-  elements.reportSummary.innerHTML = [
-    `<p>Kast: ${countByAction("Kast")} objekter</p>`,
-    `<p>Selg: ${countByAction("Selg")} objekter</p>`,
-    `<p>Behold: ${countByAction("Behold")} objekter</p>`,
-    `<p>Totalt: ${state.items.length} objekter</p>`,
-  ].join("");
+function renderCostList() {
+  const costs = getActiveProjectCosts();
+
+  if (costs.length === 0) {
+    elements.costList.replaceChildren();
+    return;
+  }
+
+  const rows = costs.map((cost) => {
+    const row = document.createElement("div");
+    row.className = "list-row";
+    row.innerHTML = `
+      <div>
+        <strong>${cost.type}</strong>
+        <p class="list-line">${formatDate(cost.createdAt)}</p>
+      </div>
+      <strong>${formatCurrency(cost.amount)}</strong>
+    `;
+    return row;
+  });
+
+  elements.costList.replaceChildren(...rows);
 }
 
-function cleanupRenderedImages() {
-  for (const url of state.renderedImageUrls) {
-    URL.revokeObjectURL(url);
-  }
-  state.renderedImageUrls = [];
+function renderReportSummary() {
+  const project = getActiveProject();
+  const items = getActiveProjectItems();
+  const totalValue = getTotalItemValue(state.items, state.activeProjectId);
+  const totalCost = getTotalProjectCost();
+  const netValue = totalValue - totalCost;
+
+  elements.reportDate.textContent = `Dato: ${formatDate(Date.now())}`;
+  elements.reportSummary.innerHTML = [
+    `<p>Prosjekt: ${project?.name || ""}</p>`,
+    `<p>Kast: ${items.filter((item) => item.action === "Kast").length} objekter</p>`,
+    `<p>Selg: ${items.filter((item) => item.action === "Selg").length} objekter</p>`,
+    `<p>Behold: ${items.filter((item) => item.action === "Behold").length} objekter</p>`,
+    `<p>Totalt: ${items.length} objekter</p>`,
+    `<p>Totalt registrert verdi: ${formatCurrency(totalValue)}</p>`,
+    `<p>Totale prosjektkostnader: ${formatCurrency(totalCost)}</p>`,
+    `<p>Netto verdi: ${formatCurrency(netValue)}</p>`,
+  ].join("");
 }
 
 function renderItemsList() {
   cleanupRenderedImages();
 
-  const filteredItems =
-    state.filter === "Alle"
-      ? state.items
-      : state.items.filter((item) => item.action === state.filter);
-
+  const filteredItems = getFilteredItems();
   elements.emptyState.classList.toggle("hidden", filteredItems.length > 0);
-  elements.itemsList.replaceChildren();
 
   const cards = filteredItems.map((item) => {
     const node = elements.itemCardTemplate.content.firstElementChild.cloneNode(true);
@@ -239,6 +377,8 @@ function renderItemsList() {
     node.querySelector(".item-action").textContent = item.action;
     node.querySelector(".item-meta").textContent = `Kategori: ${item.category}`;
     node.querySelector(".item-date").textContent = `Dato: ${item.date}`;
+    node.querySelector(".item-value").textContent =
+      item.value === null ? "Verdi mangler" : `Verdi: ${formatCurrency(item.value)}`;
     return node;
   });
 
@@ -246,33 +386,73 @@ function renderItemsList() {
 }
 
 function renderOverview() {
+  renderProjectSelect();
+  renderProjectList();
   renderFilterButtons();
   renderStats();
+  renderCostList();
   renderReportSummary();
   renderItemsList();
 }
 
-async function saveDraft(action) {
-  if (!state.draft.imageBlob || !state.draft.category) {
+function renderValuation() {
+  cleanupValuationImage();
+
+  const itemsWithoutValue = getItemsWithoutValue(state.items, state.activeProjectId);
+  const currentItem = itemsWithoutValue[0];
+
+  elements.moreFields.classList.add("hidden");
+  elements.valuationEmptyState.classList.toggle("hidden", Boolean(currentItem));
+  elements.valuationCard.classList.toggle("hidden", !currentItem);
+
+  if (!currentItem) {
+    elements.priceInput.value = "";
+    elements.commentInput.value = "";
+    elements.conditionInput.value = "";
+    elements.noteInput.value = "";
     return;
   }
 
-  const sequence = getNextSequence();
+  state.valuationImageUrl = URL.createObjectURL(currentItem.imageBlob);
+  elements.valuationImage.src = state.valuationImageUrl;
+  elements.valuationObjectId.textContent = createObjectLabel(currentItem.sequence);
+  elements.valuationCategory.textContent = `Kategori: ${currentItem.category}`;
+  elements.valuationAction.textContent = `Handling: ${currentItem.action}`;
+  elements.valuationDate.textContent = `Dato: ${currentItem.date}`;
+  elements.priceInput.value = "";
+  elements.commentInput.value = currentItem.comment || "";
+  elements.conditionInput.value = currentItem.condition || "";
+  elements.noteInput.value = currentItem.note || "";
+  focusPriceInput();
+}
+
+async function saveDraft(action) {
+  if (!state.draft.imageBlob || !state.draft.category || !state.activeProjectId) {
+    return;
+  }
+
   const createdAt = Date.now();
   const item = {
     id: crypto.randomUUID(),
-    sequence,
+    sequence: getNextSequence(),
     createdAt,
     date: formatDate(createdAt),
     imageBlob: state.draft.imageBlob,
     category: state.draft.category,
     action,
+    projectId: state.activeProjectId,
+    value: null,
+    comment: "",
+    condition: "",
+    note: "",
   };
 
   await saveItem(item);
   state.items = [item, ...state.items];
   renderOverview();
-  showSavedStep(item);
+  resetDraft();
+  showRegisterCapture();
+  tryOpenCamera();
 }
 
 async function handlePhotoChange(event) {
@@ -289,19 +469,89 @@ async function handlePhotoChange(event) {
   showCategoryStep();
 }
 
-async function loadExistingItems() {
-  state.items = await getAllItems();
+async function handleActiveProjectChange() {
+  state.activeProjectId = elements.activeProjectSelect.value;
+  await setActiveProject(state.activeProjectId);
+  renderOverview();
+
+  if (state.currentView === "valuationView") {
+    renderValuation();
+  }
+}
+
+async function handleAddProject() {
+  const newProject = await addProject(elements.newProjectInput.value);
+  if (!newProject) {
+    return;
+  }
+
+  elements.newProjectInput.value = "";
+  const ensured = await ensureProjects();
+  state.projects = ensured.projects;
+  state.activeProjectId = newProject.id;
+  await setActiveProject(newProject.id);
+  renderOverview();
+  renderProjectSelect();
+}
+
+async function handleAddCost() {
+  const amount = sanitizeValue(elements.costAmountInput.value);
+  if (amount === null) {
+    elements.costAmountInput.focus();
+    return;
+  }
+
+  const cost = {
+    id: crypto.randomUUID(),
+    projectId: state.activeProjectId,
+    type: elements.costTypeSelect.value,
+    amount,
+    createdAt: Date.now(),
+  };
+
+  await saveProjectCost(cost);
+  state.costs = [cost, ...state.costs];
+  elements.costAmountInput.value = "";
   renderOverview();
 }
 
+async function handleValuationNext() {
+  const itemsWithoutValue = getItemsWithoutValue(state.items, state.activeProjectId);
+  const currentItem = itemsWithoutValue[0];
+  const value = sanitizeValue(elements.priceInput.value);
+
+  if (!currentItem || value === null) {
+    focusPriceInput();
+    return;
+  }
+
+  const updatedItem = buildValuationPatch(currentItem, {
+    value,
+    comment: elements.commentInput.value,
+    condition: elements.conditionInput.value,
+    note: elements.noteInput.value,
+  });
+
+  await saveItem(updatedItem);
+  state.items = state.items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
+  renderOverview();
+  renderValuation();
+}
+
 async function handleClearData() {
-  if (!window.confirm("Vil du slette alle lokalt lagrede objekter?")) {
+  if (!window.confirm("Vil du slette alle lokalt lagrede data?")) {
     return;
   }
 
   cleanupRenderedImages();
-  await clearItems();
+  cleanupValuationImage();
+  await clearAllData();
+  const ensured = await ensureProjects();
+  state.projects = ensured.projects;
+  state.activeProjectId = ensured.activeProjectId;
   state.items = [];
+  state.costs = [];
+  state.filter = "Alle";
   resetDraft();
   renderOverview();
   showRegisterCapture();
@@ -341,33 +591,49 @@ function setupInstallPrompt() {
 
 function bindEvents() {
   elements.photoInput.addEventListener("change", handlePhotoChange);
+  elements.activeProjectSelect.addEventListener("change", handleActiveProjectChange);
   elements.backToCaptureButton.addEventListener("click", showRegisterCapture);
   elements.backToCategoryButton.addEventListener("click", showCategoryStep);
-  elements.nextObjectButton.addEventListener("click", () => {
-    resetDraft();
-    showRegisterCapture();
-  });
-  elements.finishButton.addEventListener("click", () => {
-    resetDraft();
-    showOverview();
-  });
-  elements.showRegisterButton.addEventListener("click", () => {
-    showRegisterCapture();
-  });
+  elements.exitFromCaptureButton.addEventListener("click", exitRegistration);
+  elements.exitFromCategoryButton.addEventListener("click", exitRegistration);
+  elements.exitFromActionButton.addEventListener("click", exitRegistration);
+  elements.showRegisterButton.addEventListener("click", showRegisterCapture);
+  elements.showValuationButton.addEventListener("click", showValuation);
   elements.showOverviewButton.addEventListener("click", showOverview);
   elements.printButton.addEventListener("click", () => window.print());
   elements.clearDataButton.addEventListener("click", handleClearData);
   elements.installButton.addEventListener("click", installApp);
+  elements.addProjectButton.addEventListener("click", handleAddProject);
+  elements.addCostButton.addEventListener("click", handleAddCost);
+  elements.valuationNextButton.addEventListener("click", handleValuationNext);
+  elements.valuationMoreButton.addEventListener("click", () => {
+    elements.moreFields.classList.toggle("hidden");
+  });
+  elements.valuationExitButton.addEventListener("click", showOverview);
+  elements.priceInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleValuationNext();
+    }
+  });
+}
+
+async function loadState() {
+  const ensured = await ensureProjects();
+  state.projects = ensured.projects;
+  state.activeProjectId = ensured.activeProjectId;
+  state.items = await getAllItems();
+  state.costs = await getProjectCosts();
 }
 
 async function init() {
   renderCategoryButtons();
   renderActionButtons();
-  renderFilterButtons();
   bindEvents();
   setupInstallPrompt();
   registerServiceWorker();
-  await loadExistingItems();
+  await loadState();
+  renderOverview();
   showRegisterCapture();
 }
 

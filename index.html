@@ -12,14 +12,24 @@
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
+        <div class="brand-block">
           <p class="eyebrow">Prosjektnavn</p>
           <h1>Rydder'n</h1>
         </div>
-        <button id="installButton" class="ghost-button hidden" type="button">Installer</button>
+        <div class="topbar-actions">
+          <button id="installButton" class="ghost-button hidden" type="button">Installer</button>
+        </div>
       </header>
 
       <main class="main-content">
+        <section class="project-strip" aria-labelledby="projectTitle">
+          <div>
+            <p class="eyebrow">Aktivt prosjekt</p>
+            <h2 id="projectTitle">Prosjekt</h2>
+          </div>
+          <select id="activeProjectSelect" class="project-select" aria-label="Aktivt prosjekt"></select>
+        </section>
+
         <section id="captureView" class="panel active" aria-labelledby="captureTitle">
           <div class="panel-header">
             <p class="eyebrow">Registrering</p>
@@ -35,11 +45,15 @@
               accept="image/*"
               capture="environment"
             />
-            <p class="helper-text">Bildet lagres lokalt og brukes kun i denne appen.</p>
+            <p class="helper-text">Bildet lagres lokalt i valgt prosjekt.</p>
           </div>
 
           <div id="draftPreview" class="draft-preview hidden">
             <img id="previewImage" alt="Forhåndsvisning av valgt objekt" />
+          </div>
+
+          <div class="flow-actions">
+            <button id="exitFromCaptureButton" class="secondary-button" type="button">Avslutt</button>
           </div>
         </section>
 
@@ -49,9 +63,10 @@
             <h2 id="categoryTitle">Velg kategori</h2>
           </div>
           <div id="categoryButtons" class="button-grid" aria-label="Kategorier"></div>
-          <button id="backToCaptureButton" class="secondary-button full-width" type="button">
-            Tilbake
-          </button>
+          <div class="flow-actions">
+            <button id="backToCaptureButton" class="secondary-button" type="button">Tilbake</button>
+            <button id="exitFromCategoryButton" class="ghost-button" type="button">Avslutt</button>
+          </div>
         </section>
 
         <section id="actionView" class="panel hidden" aria-labelledby="actionTitle">
@@ -63,24 +78,67 @@
             <span id="selectedCategoryBadge" class="badge"></span>
           </div>
           <div id="actionButtons" class="button-grid action-grid" aria-label="Handlinger"></div>
-          <button id="backToCategoryButton" class="secondary-button full-width" type="button">
-            Tilbake
-          </button>
+          <div class="flow-actions">
+            <button id="backToCategoryButton" class="secondary-button" type="button">Tilbake</button>
+            <button id="exitFromActionButton" class="ghost-button" type="button">Avslutt</button>
+          </div>
         </section>
 
-        <section id="savedView" class="panel hidden" aria-labelledby="savedTitle">
+        <section id="valuationView" class="panel hidden" aria-labelledby="valuationTitle">
           <div class="panel-header">
-            <p class="eyebrow">Lagret</p>
-            <h2 id="savedTitle">Objekt registrert</h2>
+            <p class="eyebrow">Verdisetting</p>
+            <h2 id="valuationTitle">Objekter uten verdi</h2>
           </div>
-          <div id="savedSummary" class="saved-summary"></div>
-          <div class="stack-actions">
-            <button id="nextObjectButton" class="primary-button full-width" type="button">
-              Neste objekt
-            </button>
-            <button id="finishButton" class="secondary-button full-width" type="button">
-              Avslutt
-            </button>
+
+          <div id="valuationEmptyState" class="empty-state hidden">
+            Ingen objekter uten verdi i valgt prosjekt.
+          </div>
+
+          <div id="valuationCard" class="valuation-card hidden">
+            <img id="valuationImage" class="valuation-image" alt="Objekt som skal verdisettes" />
+            <div class="valuation-meta">
+              <span id="valuationObjectId" class="badge"></span>
+              <p id="valuationCategory" class="valuation-line"></p>
+              <p id="valuationAction" class="valuation-line"></p>
+              <p id="valuationDate" class="valuation-line"></p>
+            </div>
+
+            <label class="field-block" for="priceInput">
+              <span>Pris</span>
+              <input
+                id="priceInput"
+                class="text-input price-input"
+                type="number"
+                inputmode="numeric"
+                min="0"
+                step="1"
+                autocomplete="off"
+                placeholder="Pris"
+              />
+            </label>
+
+            <div id="moreFields" class="more-fields hidden">
+              <label class="field-block" for="commentInput">
+                <span>Kommentar</span>
+                <input id="commentInput" class="text-input" type="text" autocomplete="off" />
+              </label>
+
+              <label class="field-block" for="conditionInput">
+                <span>Tilstand</span>
+                <input id="conditionInput" class="text-input" type="text" autocomplete="off" />
+              </label>
+
+              <label class="field-block" for="noteInput">
+                <span>Notat</span>
+                <textarea id="noteInput" class="text-input text-area" rows="3"></textarea>
+              </label>
+            </div>
+
+            <div class="valuation-actions">
+              <button id="valuationNextButton" class="primary-button" type="button">Neste</button>
+              <button id="valuationMoreButton" class="secondary-button" type="button">Mer</button>
+              <button id="valuationExitButton" class="ghost-button" type="button">Avslutt</button>
+            </div>
           </div>
         </section>
 
@@ -99,6 +157,48 @@
             <button id="clearDataButton" class="ghost-button danger" type="button">Tøm lokale data</button>
           </div>
 
+          <div class="management-grid">
+            <section class="report-card" aria-labelledby="projectManagerTitle">
+              <h3 id="projectManagerTitle">Prosjekter</h3>
+              <div class="inline-form">
+                <input
+                  id="newProjectInput"
+                  class="text-input"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Nytt prosjekt"
+                />
+                <button id="addProjectButton" class="secondary-button" type="button">Legg til</button>
+              </div>
+              <div id="projectList" class="simple-list"></div>
+            </section>
+
+            <section class="report-card" aria-labelledby="costTitle">
+              <h3 id="costTitle">Prosjektkostnader</h3>
+              <div class="inline-form">
+                <select id="costTypeSelect" class="text-input" aria-label="Kostnadstype">
+                  <option>Container</option>
+                  <option>Transport</option>
+                  <option>Arbeid</option>
+                  <option>Bortkjøring</option>
+                  <option>Annet</option>
+                </select>
+                <input
+                  id="costAmountInput"
+                  class="text-input"
+                  type="number"
+                  inputmode="numeric"
+                  min="0"
+                  step="1"
+                  autocomplete="off"
+                  placeholder="Beløp"
+                />
+                <button id="addCostButton" class="secondary-button" type="button">Legg til</button>
+              </div>
+              <div id="costList" class="simple-list"></div>
+            </section>
+          </div>
+
           <div class="report-card">
             <h3>Lageroppryddingsrapport</h3>
             <p id="reportDate" class="report-date"></p>
@@ -106,7 +206,7 @@
           </div>
 
           <div id="emptyState" class="empty-state hidden">
-            Ingen objekter registrert ennå.
+            Ingen objekter registrert i valgt prosjekt.
           </div>
 
           <div id="itemsList" class="items-list" aria-live="polite"></div>
@@ -115,6 +215,7 @@
 
       <nav class="bottom-nav" aria-label="Hovednavigasjon">
         <button id="showRegisterButton" class="nav-button active" type="button">Registrer</button>
+        <button id="showValuationButton" class="nav-button" type="button">Verdisetting</button>
         <button id="showOverviewButton" class="nav-button" type="button">Oversikt</button>
       </nav>
     </div>
@@ -129,6 +230,7 @@
           </div>
           <p class="item-meta"></p>
           <p class="item-date"></p>
+          <p class="item-value"></p>
         </div>
       </article>
     </template>

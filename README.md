@@ -2,12 +2,17 @@
 
 Ekstremt enkel PWA for rask registrering av objekter under lageropprydding.
 
-## Funksjoner i versjon 1
+## Funksjoner
 
 - Ta bilde med mobilkamera
 - Velg kategori
 - Velg handling
-- Lagre automatisk i IndexedDB
+- Autolagring rett etter valgt handling
+- Automatisk forsok pa a apne kamera igjen for neste objekt
+- Synlig avslutt-knapp i registreringsflyten
+- Aktivt prosjekt for alle objekter
+- Egen modul for verdisetting av objekter uten verdi
+- Prosjektkostnader med rapport for verdi, kostnad og netto
 - Se oversikt, filtrering og statistikk
 - Skriv ut rapport eller lagre som PDF via nettleseren
 - Offline-stotte via service worker
@@ -26,8 +31,10 @@ Ekstremt enkel PWA for rask registrering av objekter under lageropprydding.
 
 - `index.html`: appskall og hovedvisninger
 - `styles.css`: mobil-forst design med store knapper
-- `app.js`: UI-logikk, flyt, filtrering, statistikk og rapport
+- `app.js`: UI-logikk, hurtigregistrering, oversikt, kostnader og rapport
 - `db.js`: enkel datatilgang for IndexedDB
+- `projects.js`: prosjektlogikk og aktivt prosjekt
+- `valuation.js`: logikk for verdisetting og verdiberegning
 - `sw.js`: enkel caching av appskallet
 - `manifest.json`: PWA-konfigurasjon
 
@@ -40,6 +47,7 @@ Kodebasen er holdt enkel, men er strukturert slik at senere versjoner kan fa:
 - tale til tekst
 - CSV- eller Excel-eksport
 - sky-synkronisering
+- integrasjon i Eiendomsappen
 
 ## GitHub Pages
 

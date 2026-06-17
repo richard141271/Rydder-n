@@ -79,6 +79,11 @@ img {
   padding: 20px 16px 12px;
 }
 
+.brand-block,
+.topbar-actions {
+  min-width: 0;
+}
+
 .topbar h1,
 .panel-header h2,
 .report-card h3,
@@ -96,7 +101,33 @@ img {
 
 .main-content {
   flex: 1;
-  padding: 0 16px 96px;
+  padding: 0 16px 110px;
+  display: grid;
+  gap: 16px;
+}
+
+.project-strip {
+  display: grid;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.project-strip h2 {
+  margin: 0;
+}
+
+.project-select,
+.text-input {
+  width: 100%;
+  min-height: 56px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: #fff;
+  color: var(--text);
 }
 
 .panel {
@@ -117,7 +148,7 @@ img {
 .camera-card,
 .report-card,
 .draft-preview,
-.saved-summary,
+.valuation-card,
 .empty-state {
   background: #f9fafb;
   border: 1px solid var(--border);
@@ -131,7 +162,8 @@ img {
 .ghost-button,
 .nav-button,
 .filter-button,
-.tile-button {
+.tile-button,
+.project-chip {
   min-height: 64px;
   border-radius: 18px;
   transition: transform 0.12s ease, background 0.12s ease;
@@ -162,7 +194,8 @@ img {
 
 .secondary-button,
 .ghost-button,
-.filter-button {
+.filter-button,
+.project-chip {
   background: #e5e7eb;
   color: var(--text);
   font-weight: 700;
@@ -182,7 +215,10 @@ img {
 .helper-text,
 .item-meta,
 .item-date,
-.report-date {
+.report-date,
+.valuation-line,
+.list-line,
+.field-block span {
   color: var(--muted);
 }
 
@@ -223,8 +259,14 @@ img {
 }
 
 .selection-summary,
-.stack-actions,
-.report-actions {
+.report-actions,
+.flow-actions,
+.valuation-actions,
+.management-grid,
+.inline-form,
+.simple-list,
+.field-block,
+.more-fields {
   display: grid;
   gap: 12px;
 }
@@ -248,6 +290,10 @@ img {
 
 .full-width {
   width: 100%;
+  margin-top: 16px;
+}
+
+.flow-actions {
   margin-top: 16px;
 }
 
@@ -292,6 +338,38 @@ img {
   gap: 8px;
 }
 
+.management-grid {
+  margin-bottom: 16px;
+}
+
+.inline-form {
+  margin-top: 12px;
+}
+
+.simple-list {
+  margin-top: 12px;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.list-row strong,
+.list-row p {
+  margin: 0;
+}
+
+.list-row .ghost-button {
+  min-height: 44px;
+}
+
 .items-list {
   display: grid;
   gap: 12px;
@@ -328,15 +406,51 @@ img {
   margin-bottom: 8px;
 }
 
-.saved-summary p,
 .report-summary p,
 .item-content p {
   margin: 0;
 }
 
+.item-value {
+  margin-top: 8px !important;
+  font-weight: 700;
+}
+
 .empty-state {
   text-align: center;
   color: var(--muted);
+}
+
+.valuation-card {
+  display: grid;
+  gap: 16px;
+}
+
+.valuation-image {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #d1d5db;
+}
+
+.valuation-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.valuation-line {
+  margin: 0;
+}
+
+.price-input {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.text-area {
+  min-height: 110px;
+  resize: vertical;
 }
 
 .bottom-nav {
@@ -345,7 +459,7 @@ img {
   right: 0;
   bottom: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   background: rgba(243, 244, 246, 0.96);
@@ -359,20 +473,26 @@ img {
 }
 
 @media (min-width: 720px) {
-  .main-content {
-    padding-bottom: 110px;
-  }
-
   .report-actions {
     grid-template-columns: 1fr auto;
   }
 
-  .stack-actions {
-    grid-template-columns: 1fr 1fr;
+  .flow-actions,
+  .valuation-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .action-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .management-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .inline-form {
+    grid-template-columns: 1fr auto;
+    align-items: start;
   }
 }
 
@@ -382,11 +502,13 @@ img {
   }
 
   .topbar,
+  .project-strip,
   .bottom-nav,
   #captureView,
   #categoryView,
   #actionView,
-  #savedView,
+  #valuationView,
+  .management-grid,
   .report-actions,
   #installButton {
     display: none !important;
