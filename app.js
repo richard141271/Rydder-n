@@ -1,5 +1,4 @@
 import {
-  clearAllData,
   deleteProjectAndData,
   getAllItems,
   getDefaultProjectId,
@@ -69,7 +68,6 @@ const elements = {
   emptyState: document.querySelector("#emptyState"),
   itemCardTemplate: document.querySelector("#itemCardTemplate"),
   printButton: document.querySelector("#printButton"),
-  clearDataButton: document.querySelector("#clearDataButton"),
   installButton: document.querySelector("#installButton"),
   newProjectInput: document.querySelector("#newProjectInput"),
   addProjectButton: document.querySelector("#addProjectButton"),
@@ -248,24 +246,30 @@ function renderProjectList() {
     row.className = "list-row";
 
     const left = document.createElement("div");
+    left.className = "list-left";
+
+    const header = document.createElement("div");
+    header.className = "list-header";
+
     const title = document.createElement("strong");
     title.textContent = project.name;
-    const meta = document.createElement("p");
-    meta.className = "list-line";
-    meta.textContent = project.id === state.activeProjectId ? "Aktivt prosjekt" : "Prosjekt";
-    left.append(title, meta);
-
-    row.append(left);
+    header.append(title);
 
     if (project.id !== defaultProjectId) {
       const deleteButton = document.createElement("button");
       deleteButton.type = "button";
-      deleteButton.className = "ghost-button danger";
+      deleteButton.className = "mini-danger-button";
       deleteButton.textContent = "Slett";
       deleteButton.addEventListener("click", () => handleDeleteProject(project.id));
-      row.append(deleteButton);
+      header.append(deleteButton);
     }
 
+    const meta = document.createElement("p");
+    meta.className = "list-line";
+    meta.textContent = project.id === state.activeProjectId ? "Aktivt prosjekt" : "Prosjekt";
+
+    left.append(header, meta);
+    row.append(left);
     return row;
   });
 
@@ -594,25 +598,6 @@ async function handleValuationNext() {
   renderValuation();
 }
 
-async function handleClearData() {
-  if (!window.confirm("Vil du slette alle lokalt lagrede data?")) {
-    return;
-  }
-
-  cleanupRenderedImages();
-  cleanupValuationImage();
-  await clearAllData();
-  const ensured = await ensureProjects();
-  state.projects = ensured.projects;
-  state.activeProjectId = ensured.activeProjectId;
-  state.items = [];
-  state.costs = [];
-  state.filter = "Alle";
-  resetDraft();
-  renderOverview();
-  showRegisterCapture();
-}
-
 async function installApp() {
   if (!state.deferredInstallPrompt) {
     return;
@@ -657,7 +642,6 @@ function bindEvents() {
   elements.showValuationButton.addEventListener("click", showValuation);
   elements.showOverviewButton.addEventListener("click", showOverview);
   elements.printButton.addEventListener("click", () => window.print());
-  elements.clearDataButton.addEventListener("click", handleClearData);
   elements.installButton.addEventListener("click", installApp);
   elements.addProjectButton.addEventListener("click", handleAddProject);
   elements.addCostButton.addEventListener("click", handleAddCost);

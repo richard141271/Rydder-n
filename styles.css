@@ -350,6 +350,18 @@ img {
   margin-top: 12px;
 }
 
+.list-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .list-row {
   display: flex;
   align-items: center;
@@ -366,8 +378,13 @@ img {
   margin: 0;
 }
 
-.list-row .ghost-button {
+.mini-danger-button {
   min-height: 44px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: #fee2e2;
+  color: var(--danger);
+  font-weight: 800;
 }
 
 .items-list {
