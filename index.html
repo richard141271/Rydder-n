@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#111827" />
+    <meta name="description" content="Rydder'n - enkel PWA for rask lageropprydding." />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Rydder'n</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Prosjektnavn</p>
+          <h1>Rydder'n</h1>
+        </div>
+        <button id="installButton" class="ghost-button hidden" type="button">Installer</button>
+      </header>
+
+      <main class="main-content">
+        <section id="captureView" class="panel active" aria-labelledby="captureTitle">
+          <div class="panel-header">
+            <p class="eyebrow">Registrering</p>
+            <h2 id="captureTitle">Ta bilde av neste objekt</h2>
+          </div>
+
+          <div class="camera-card">
+            <label for="photoInput" class="camera-button">Ta bilde</label>
+            <input
+              id="photoInput"
+              class="visually-hidden"
+              type="file"
+              accept="image/*"
+              capture="environment"
+            />
+            <p class="helper-text">Bildet lagres lokalt og brukes kun i denne appen.</p>
+          </div>
+
+          <div id="draftPreview" class="draft-preview hidden">
+            <img id="previewImage" alt="Forhåndsvisning av valgt objekt" />
+          </div>
+        </section>
+
+        <section id="categoryView" class="panel hidden" aria-labelledby="categoryTitle">
+          <div class="panel-header">
+            <p class="eyebrow">Steg 1 av 2</p>
+            <h2 id="categoryTitle">Velg kategori</h2>
+          </div>
+          <div id="categoryButtons" class="button-grid" aria-label="Kategorier"></div>
+          <button id="backToCaptureButton" class="secondary-button full-width" type="button">
+            Tilbake
+          </button>
+        </section>
+
+        <section id="actionView" class="panel hidden" aria-labelledby="actionTitle">
+          <div class="panel-header">
+            <p class="eyebrow">Steg 2 av 2</p>
+            <h2 id="actionTitle">Velg handling</h2>
+          </div>
+          <div class="selection-summary">
+            <span id="selectedCategoryBadge" class="badge"></span>
+          </div>
+          <div id="actionButtons" class="button-grid action-grid" aria-label="Handlinger"></div>
+          <button id="backToCategoryButton" class="secondary-button full-width" type="button">
+            Tilbake
+          </button>
+        </section>
+
+        <section id="savedView" class="panel hidden" aria-labelledby="savedTitle">
+          <div class="panel-header">
+            <p class="eyebrow">Lagret</p>
+            <h2 id="savedTitle">Objekt registrert</h2>
+          </div>
+          <div id="savedSummary" class="saved-summary"></div>
+          <div class="stack-actions">
+            <button id="nextObjectButton" class="primary-button full-width" type="button">
+              Neste objekt
+            </button>
+            <button id="finishButton" class="secondary-button full-width" type="button">
+              Avslutt
+            </button>
+          </div>
+        </section>
+
+        <section id="overviewView" class="panel hidden" aria-labelledby="overviewTitle">
+          <div class="panel-header">
+            <p class="eyebrow">Oversikt</p>
+            <h2 id="overviewTitle">Registrerte objekter</h2>
+          </div>
+
+          <div id="statsGrid" class="stats-grid"></div>
+
+          <div id="filterButtons" class="filter-row" aria-label="Filtrering"></div>
+
+          <div class="report-actions">
+            <button id="printButton" class="secondary-button" type="button">Skriv ut rapport</button>
+            <button id="clearDataButton" class="ghost-button danger" type="button">Tøm lokale data</button>
+          </div>
+
+          <div class="report-card">
+            <h3>Lageroppryddingsrapport</h3>
+            <p id="reportDate" class="report-date"></p>
+            <div id="reportSummary" class="report-summary"></div>
+          </div>
+
+          <div id="emptyState" class="empty-state hidden">
+            Ingen objekter registrert ennå.
+          </div>
+
+          <div id="itemsList" class="items-list" aria-live="polite"></div>
+        </section>
+      </main>
+
+      <nav class="bottom-nav" aria-label="Hovednavigasjon">
+        <button id="showRegisterButton" class="nav-button active" type="button">Registrer</button>
+        <button id="showOverviewButton" class="nav-button" type="button">Oversikt</button>
+      </nav>
+    </div>
+
+    <template id="itemCardTemplate">
+      <article class="item-card">
+        <img class="item-image" alt="Bilde av registrert objekt" />
+        <div class="item-content">
+          <div class="item-header">
+            <h3 class="item-id"></h3>
+            <span class="badge item-action"></span>
+          </div>
+          <p class="item-meta"></p>
+          <p class="item-date"></p>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

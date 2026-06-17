@@ -1,0 +1,11 @@
+{
+  "name": "Rydder'n",
+  "short_name": "Rydder'n",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#111827",
+  "description": "Ekstremt enkel PWA for rask registrering under lageropprydding.",
+  "lang": "no",
+  "scope": "./"
+}
