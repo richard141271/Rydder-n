@@ -92,6 +92,26 @@ export function getDefaultProjectId() {
   return DEFAULT_PROJECT_ID;
 }
 
+function deleteByIndexValue(store, indexName, value) {
+  return new Promise((resolve, reject) => {
+    const index = store.index(indexName);
+    const request = index.openCursor(IDBKeyRange.only(value));
+
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve(true);
+        return;
+      }
+
+      cursor.delete();
+      cursor.continue();
+    };
+
+    request.onerror = () => reject(request.error);
+  });
+}
+
 export function saveItem(item) {
   return runTransaction([STORE_ITEMS], "readwrite", (transaction) =>
     transaction.objectStore(STORE_ITEMS).put(normalizeItem(item)),
@@ -120,6 +140,21 @@ export function deleteProject(projectId) {
   return runTransaction([STORE_PROJECTS], "readwrite", (transaction) =>
     transaction.objectStore(STORE_PROJECTS).delete(projectId),
   );
+}
+
+export function deleteProjectAndData(projectId) {
+  return runTransaction([STORE_ITEMS, STORE_COSTS, STORE_PROJECTS], "readwrite", (transaction) => {
+    const itemsStore = transaction.objectStore(STORE_ITEMS);
+    const costsStore = transaction.objectStore(STORE_COSTS);
+    const projectsStore = transaction.objectStore(STORE_PROJECTS);
+
+    projectsStore.delete(projectId);
+
+    return Promise.all([
+      deleteByIndexValue(itemsStore, "projectId", projectId),
+      deleteByIndexValue(costsStore, "projectId", projectId),
+    ]).then(() => true);
+  });
 }
 
 export function getProjects() {

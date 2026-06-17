@@ -1,4 +1,12 @@
-import { clearAllData, getAllItems, getProjectCosts, saveItem, saveProjectCost } from "./db.js";
+import {
+  clearAllData,
+  deleteProjectAndData,
+  getAllItems,
+  getDefaultProjectId,
+  getProjectCosts,
+  saveItem,
+  saveProjectCost,
+} from "./db.js";
 import { addProject, ensureProjects, getProjectById, setActiveProject } from "./projects.js";
 import { buildValuationPatch, getItemsWithoutValue, getTotalItemValue, sanitizeValue } from "./valuation.js";
 
@@ -234,15 +242,30 @@ function renderProjectSelect() {
 }
 
 function renderProjectList() {
+  const defaultProjectId = getDefaultProjectId();
   const rows = state.projects.map((project) => {
     const row = document.createElement("div");
     row.className = "list-row";
-    row.innerHTML = `
-      <div>
-        <strong>${project.name}</strong>
-        <p class="list-line">${project.id === state.activeProjectId ? "Aktivt prosjekt" : "Prosjekt"}</p>
-      </div>
-    `;
+
+    const left = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = project.name;
+    const meta = document.createElement("p");
+    meta.className = "list-line";
+    meta.textContent = project.id === state.activeProjectId ? "Aktivt prosjekt" : "Prosjekt";
+    left.append(title, meta);
+
+    row.append(left);
+
+    if (project.id !== defaultProjectId) {
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "ghost-button danger";
+      deleteButton.textContent = "Slett";
+      deleteButton.addEventListener("click", () => handleDeleteProject(project.id));
+      row.append(deleteButton);
+    }
+
     return row;
   });
 
@@ -492,6 +515,39 @@ async function handleAddProject() {
   await setActiveProject(newProject.id);
   renderOverview();
   renderProjectSelect();
+}
+
+async function handleDeleteProject(projectId) {
+  const defaultProjectId = getDefaultProjectId();
+  if (projectId === defaultProjectId) {
+    return;
+  }
+
+  const project = getProjectById(state.projects, projectId);
+  if (!project) {
+    return;
+  }
+
+  const projectItemsCount = state.items.filter((item) => item.projectId === projectId).length;
+  const projectCostsCount = state.costs.filter((cost) => cost.projectId === projectId).length;
+  const message = `Slette prosjekt "${project.name}"?\n\nDette sletter også ${projectItemsCount} objekter og ${projectCostsCount} kostnader.`;
+
+  if (!window.confirm(message)) {
+    return;
+  }
+
+  await deleteProjectAndData(projectId);
+  state.items = state.items.filter((item) => item.projectId !== projectId);
+  state.costs = state.costs.filter((cost) => cost.projectId !== projectId);
+
+  const ensured = await ensureProjects();
+  state.projects = ensured.projects;
+  state.activeProjectId = ensured.activeProjectId;
+  renderOverview();
+
+  if (state.currentView === "valuationView") {
+    renderValuation();
+  }
 }
 
 async function handleAddCost() {

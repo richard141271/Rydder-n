@@ -497,6 +497,10 @@ img {
 }
 
 @media print {
+  @page {
+    margin: 12mm;
+  }
+
   body {
     background: #fff;
   }
@@ -516,6 +520,7 @@ img {
 
   .main-content {
     padding: 0;
+    display: block;
   }
 
   #overviewView {
@@ -523,6 +528,40 @@ img {
     box-shadow: none;
     border: 0;
     padding: 0;
+  }
+
+  #filterButtons {
+    display: none !important;
+  }
+
+  .stats-grid {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .stat-card {
+    display: inline-block;
+    width: 48%;
+    margin: 0 0 10px;
+    vertical-align: top;
+  }
+
+  .items-list {
+    display: block;
+  }
+
+  .item-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    width: 100%;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    -webkit-column-break-inside: avoid;
+  }
+
+  .item-content {
+    flex: 1;
   }
 
   .item-card,
