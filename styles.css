@@ -154,6 +154,23 @@ img {
   margin-top: 6px;
 }
 
+.debug-lines {
+  display: grid;
+  gap: 8px;
+}
+
+.debug-line {
+  margin: 0;
+  color: #1f2937;
+  word-break: break-word;
+  font-size: 0.95rem;
+}
+
+.debug-line-error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .topbar h1,
 .panel-header h2,
 .report-card h3,

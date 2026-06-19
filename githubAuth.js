@@ -41,10 +41,18 @@ export async function startDeviceFlow({ clientId, scope }) {
   });
 
   if (!response.ok) {
-    throw new Error("Kunne ikke starte GitHub-innlogging.");
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      `GitHub Device Flow feilet (${response.status} ${response.statusText})${errorText ? `: ${errorText}` : ""}`,
+    );
   }
-
-  return response.json();
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(
+      `GitHub Device Flow svarte med feil: ${data.error}${data.error_description ? ` - ${data.error_description}` : ""}`,
+    );
+  }
+  return data;
 }
 
 export async function pollDeviceFlowToken({ clientId, deviceCode }) {
@@ -70,4 +78,3 @@ export async function pollDeviceFlowToken({ clientId, deviceCode }) {
 
   return data;
 }
-

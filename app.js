@@ -1,4 +1,4 @@
-import { APP_CONFIG } from "./config.js";
+import { APP_CONFIG } from "./config.js?v=device-flow-debug-2";
 import {
   clearStoredToken,
   getStoredToken,
@@ -51,11 +51,16 @@ const state = {
     user: null,
     deviceFlow: null,
     polling: false,
+    popupWindow: null,
   },
   sync: {
     running: false,
     lastError: "",
     queueCount: 0,
+  },
+  debug: {
+    lines: [],
+    lastError: "",
   },
 };
 
@@ -800,6 +805,27 @@ function bindEvents() {
   elements.loginButton.addEventListener("click", () => showAuthView());
   elements.logoutButton.addEventListener("click", handleLogout);
   elements.startDeviceFlowButton.addEventListener("click", handleStartDeviceFlow);
+  elements.deviceFlowLink.addEventListener("click", (event) => {
+    const url = elements.deviceFlowLink.href;
+    // #region debug-point E:popup-check
+    addDebugLine("Forsøker å åpne", url || "(mangler URL)");
+    postDebugEvent("E", "device flow link click", { url });
+    // #endregion
+    event.preventDefault();
+    const popup = window.open(url, "_blank", "noopener,noreferrer");
+    if (!popup) {
+      // #region debug-point E:popup-blocked
+      addDebugLine("Popup-status", "Blokkert eller stoppet av Safari", "error");
+      postDebugEvent("E", "window.open blocked", { url, popup: false });
+      // #endregion
+      showAuthError("Safari blokkerte åpningen av GitHub-vinduet. Hold inne lenken eller åpne i ny fane.");
+      return;
+    }
+    // #region debug-point E:popup-opened
+    addDebugLine("Popup-status", "GitHub-vindu åpnet");
+    postDebugEvent("E", "window.open succeeded", { url, popup: true });
+    // #endregion
+  });
   elements.copyUserCodeButton.addEventListener("click", async () => {
     const code = elements.deviceUserCode.textContent || "";
     if (!code) {
@@ -820,6 +846,12 @@ function bindEvents() {
 function showAuthError(message) {
   elements.authError.textContent = message;
   elements.authError.classList.toggle("hidden", !message);
+  if (message) {
+    // #region debug-point C:auth-error-ui
+    addDebugLine("UI-feil", message, "error");
+    postDebugEvent("C", "auth error shown in ui", { message });
+    // #endregion
+  }
 }
 
 function renderSyncStatus() {
@@ -894,13 +926,51 @@ async function handleLogout() {
 
 async function handleStartDeviceFlow() {
   showAuthError("");
+  // #region debug-point A:button-click
+  addDebugLine("Knappetrykk", "Start innlogging");
+  addDebugLine("clientId fra config", APP_CONFIG.github.clientId || "(tom)");
+  addDebugLine("scope fra config", APP_CONFIG.github.scope || "(tom)");
+  addDebugLine("GitHub URL", "https://github.com/login/device/code");
+  postDebugEvent("A", "startDeviceFlow button clicked", {
+    clientId: APP_CONFIG.github.clientId || "",
+    scope: APP_CONFIG.github.scope || "",
+    online: navigator.onLine,
+    userAgent: navigator.userAgent,
+  });
+  // #endregion
+
+  // #region debug-point E:popup-probe
+  const popupWindow = window.open("", "_blank", "noopener,noreferrer");
+  state.auth.popupWindow = popupWindow || null;
+  if (!popupWindow) {
+    addDebugLine("Popup-probe", "Blokkert av Safari eller nettleser", "error");
+    postDebugEvent("E", "popup probe blocked", { blocked: true });
+  } else {
+    addDebugLine("Popup-probe", "Blank fane åpnet");
+    postDebugEvent("E", "popup probe opened", { blocked: false });
+    try {
+      popupWindow.document.write("<title>Rydder'n</title><p>Venter på GitHub-innlogging...</p>");
+    } catch {}
+  }
+  // #endregion
 
   if (!APP_CONFIG.github.clientId) {
     showAuthError("Mangler GitHub clientId i config.js.");
+    if (state.auth.popupWindow) {
+      state.auth.popupWindow.close();
+      state.auth.popupWindow = null;
+    }
     return;
   }
 
   try {
+    // #region debug-point B:before-api-call
+    addDebugLine("API-kall", "Starter GitHub Device Flow");
+    postDebugEvent("B", "calling startDeviceFlow", {
+      url: "https://github.com/login/device/code",
+      clientId: APP_CONFIG.github.clientId,
+    });
+    // #endregion
     const flow = await startDeviceFlow({
       clientId: APP_CONFIG.github.clientId,
       scope: APP_CONFIG.github.scope,
@@ -910,8 +980,44 @@ async function handleStartDeviceFlow() {
     elements.deviceFlowLink.href = flow.verification_uri;
     elements.deviceUserCode.textContent = flow.user_code;
     elements.deviceFlowCard.classList.remove("hidden");
+    // #region debug-point C:after-api-call
+    addDebugLine("verification_uri", flow.verification_uri || "(mangler)");
+    addDebugLine("verification_uri_complete", flow.verification_uri_complete || "(mangler)");
+    addDebugLine("user_code", flow.user_code || "(mangler)");
+    postDebugEvent("C", "device flow started", {
+      verification_uri: flow.verification_uri || "",
+      verification_uri_complete: flow.verification_uri_complete || "",
+      user_code: flow.user_code || "",
+      expires_in: flow.expires_in || 0,
+      interval: flow.interval || 0,
+    });
+    // #endregion
+    if (state.auth.popupWindow && flow.verification_uri) {
+      try {
+        state.auth.popupWindow.location.href = flow.verification_uri;
+        addDebugLine("Åpnet URL", flow.verification_uri);
+        postDebugEvent("E", "navigated popup to verification uri", { url: flow.verification_uri });
+      } catch (popupError) {
+        addDebugLine("Popup-navigering feilet", popupError?.message || "ukjent feil", "error");
+        postDebugEvent("E", "popup navigation failed", {
+          message: popupError?.message || "unknown",
+          url: flow.verification_uri,
+        });
+      }
+    }
     startPollingForToken();
   } catch (error) {
+    // #region debug-point D:start-device-flow-failed
+    addDebugLine("GitHub API-feil", error?.message || "Ukjent feil", "error");
+    postDebugEvent("D", "startDeviceFlow failed", {
+      message: error?.message || "unknown",
+      stack: error?.stack || "",
+    });
+    // #endregion
+    if (state.auth.popupWindow) {
+      state.auth.popupWindow.close();
+      state.auth.popupWindow = null;
+    }
     showAuthError(error?.message || "Kunne ikke starte innlogging.");
   }
 }
@@ -984,6 +1090,69 @@ async function startPollingForToken() {
 function delay(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
+
+// #region debug-point A:device-flow-ui
+const DEBUG_SERVER_URL = "http://192.168.0.35:7777/event";
+const DEBUG_SESSION_ID = "login-device-flow";
+
+function postDebugEvent(hypothesisId, msg, data = {}) {
+  fetch(DEBUG_SERVER_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: DEBUG_SESSION_ID,
+      runId: "pre-fix",
+      hypothesisId,
+      location: "app.js",
+      msg: `[DEBUG] ${msg}`,
+      data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
+function formatDebugValue(value) {
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function ensureDebugPanel() {
+  return document.querySelector("#debugLines");
+}
+
+function renderDebugPanel() {
+  const lines = ensureDebugPanel();
+  if (!lines) {
+    return;
+  }
+  lines.replaceChildren(
+    ...state.debug.lines.slice(0, 12).map((line) => {
+      const entry = document.createElement("p");
+      entry.className = line.type === "error" ? "debug-line debug-line-error" : "debug-line";
+      entry.textContent = line.text;
+      return entry;
+    }),
+  );
+}
+
+function addDebugLine(label, value, type = "info") {
+  const text = `${label}: ${formatDebugValue(value)}`;
+  state.debug.lines = [{ text, type }, ...state.debug.lines].slice(0, 20);
+  renderDebugPanel();
+}
+// #endregion
 
 async function loadProjects() {
   try {
@@ -1122,6 +1291,9 @@ async function init() {
 
   updateAuthUi();
   await refreshQueueCount();
+  addDebugLine("App startet", "Auth-debug aktiv");
+  addDebugLine("config.js clientId", APP_CONFIG.github.clientId || "(tom)");
+  addDebugLine("Device Flow endpoint", "https://github.com/login/device/code");
 
   if (!storage.isAuthenticated()) {
     showAuthView();
