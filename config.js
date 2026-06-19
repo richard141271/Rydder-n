@@ -3,7 +3,7 @@ export const APP_CONFIG = {
     owner: "richard141271",
     repo: "Rydder-n",
     branch: "main",
-    clientId: "",
+    clientId: "0v23liMMClFMry1InTPr",
     scope: "repo",
   },
 };
