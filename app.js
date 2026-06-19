@@ -55,6 +55,7 @@ const state = {
   sync: {
     running: false,
     lastError: "",
+    queueCount: 0,
   },
 };
 
@@ -67,6 +68,7 @@ const elements = {
   activeProjectSelect: document.querySelector("#activeProjectSelect"),
   authView: document.querySelector("#authView"),
   authStatus: document.querySelector("#authStatus"),
+  syncStatus: document.querySelector("#syncStatus"),
   loginButton: document.querySelector("#loginButton"),
   logoutButton: document.querySelector("#logoutButton"),
   startDeviceFlowButton: document.querySelector("#startDeviceFlowButton"),
@@ -566,6 +568,7 @@ async function saveDraft(action) {
       createdAt: Date.now(),
       payload: { optimisticId, itemDraft },
     });
+    await refreshQueueCount();
     resetDraft();
     showRegisterCapture();
     tryOpenCamera();
@@ -631,6 +634,7 @@ async function handleDeleteProject(projectId) {
       createdAt: Date.now(),
       payload: {},
     });
+    await refreshQueueCount();
   }
 
   await loadProjects();
@@ -681,6 +685,7 @@ async function handleAddCost() {
       createdAt: Date.now(),
       payload: { entry },
     });
+    await refreshQueueCount();
   }
   renderOverview();
 }
@@ -722,6 +727,7 @@ async function handleValuationNext() {
       createdAt: Date.now(),
       payload: { itemId: currentItem.id, patch },
     });
+    await refreshQueueCount();
   }
 
   renderValuation();
@@ -803,13 +809,55 @@ function bindEvents() {
   });
 
   window.addEventListener("online", () => {
+    renderSyncStatus();
     syncQueue();
+  });
+  window.addEventListener("offline", () => {
+    renderSyncStatus();
   });
 }
 
 function showAuthError(message) {
   elements.authError.textContent = message;
   elements.authError.classList.toggle("hidden", !message);
+}
+
+function renderSyncStatus() {
+  const status = elements.syncStatus;
+  const queueCount = state.sync.queueCount || 0;
+  const classNames = ["sync-status"];
+
+  let text = "Ikke innlogget";
+
+  if (!storage.isAuthenticated()) {
+    text = "Ikke innlogget";
+  } else if (!navigator.onLine) {
+    text = queueCount > 0 ? `Offline - ${queueCount} i kø` : "Offline";
+    classNames.push("is-pending");
+  } else if (state.sync.running) {
+    text = queueCount > 0 ? `Synkroniserer ${queueCount}` : "Synkroniserer";
+    classNames.push("is-pending");
+  } else if (state.sync.lastError) {
+    text = queueCount > 0 ? `Synk-feil - ${queueCount} i kø` : "Synk-feil";
+    classNames.push("is-error");
+  } else if (queueCount > 0) {
+    text = `${queueCount} venter`;
+    classNames.push("is-pending");
+  } else {
+    text = "Synket";
+    classNames.push("is-ok");
+  }
+
+  status.className = classNames.join(" ");
+  status.textContent = text;
+  status.classList.remove("hidden");
+}
+
+async function refreshQueueCount() {
+  const queue = await getQueuedMutations();
+  state.sync.queueCount = queue.length;
+  renderSyncStatus();
+  return queue;
 }
 
 function updateAuthUi() {
@@ -822,6 +870,7 @@ function updateAuthUi() {
     : "GitHub: ikke innlogget";
   elements.authStatus.textContent = label;
   elements.authStatus.classList.remove("hidden");
+  renderSyncStatus();
 }
 
 function showAuthView() {
@@ -837,6 +886,8 @@ async function handleLogout() {
   state.projects = [];
   state.currentProject = null;
   state.activeProjectId = "";
+  state.sync.lastError = "";
+  await refreshQueueCount();
   updateAuthUi();
   showAuthView();
 }
@@ -998,14 +1049,16 @@ async function syncQueue() {
     return;
   }
   if (!navigator.onLine || !storage.isAuthenticated()) {
+    await refreshQueueCount();
     return;
   }
 
   state.sync.running = true;
   state.sync.lastError = "";
+  renderSyncStatus();
 
   try {
-    const queue = await getQueuedMutations();
+    const queue = await refreshQueueCount();
     for (const entry of queue) {
       if (entry.type === "addItem") {
         await storage.addItem(entry.projectId, entry.payload.itemDraft);
@@ -1013,21 +1066,29 @@ async function syncQueue() {
           await deleteOptimisticItem(entry.projectId, entry.payload.optimisticId);
         }
         await deleteQueuedMutation(entry.id);
+        state.sync.queueCount = Math.max(0, state.sync.queueCount - 1);
+        renderSyncStatus();
         continue;
       }
       if (entry.type === "updateItem") {
         await storage.updateItem(entry.projectId, entry.payload.itemId, entry.payload.patch);
         await deleteQueuedMutation(entry.id);
+        state.sync.queueCount = Math.max(0, state.sync.queueCount - 1);
+        renderSyncStatus();
         continue;
       }
       if (entry.type === "addCost") {
         await storage.addCost(entry.projectId, entry.payload.entry);
         await deleteQueuedMutation(entry.id);
+        state.sync.queueCount = Math.max(0, state.sync.queueCount - 1);
+        renderSyncStatus();
         continue;
       }
       if (entry.type === "deleteProject") {
         await storage.deleteProject(entry.projectId);
         await deleteQueuedMutation(entry.id);
+        state.sync.queueCount = Math.max(0, state.sync.queueCount - 1);
+        renderSyncStatus();
         continue;
       }
     }
@@ -1039,6 +1100,7 @@ async function syncQueue() {
     state.sync.lastError = error?.message || "Kunne ikke synkronisere.";
   } finally {
     state.sync.running = false;
+    await refreshQueueCount();
   }
 }
 
@@ -1059,6 +1121,7 @@ async function init() {
   }
 
   updateAuthUi();
+  await refreshQueueCount();
 
   if (!storage.isAuthenticated()) {
     showAuthView();
