@@ -7,12 +7,12 @@ Ekstremt enkel PWA for rask registrering av objekter under lageropprydding.
 - Ta bilde med mobilkamera
 - Velg kategori
 - Velg handling
-- Autolagring rett etter valgt handling (GitHub er hovedlagring)
+- Autolagring rett etter valgt handling
 - Automatisk forsok pa a apne kamera igjen for neste objekt
 - Synlig avslutt-knapp i registreringsflyten
-- Aktivt prosjekt for alle objekter (lagres i GitHub)
+- Aktivt prosjekt for alle objekter
 - Egen modul for verdisetting av objekter uten verdi
-- Prosjektkostnader med rapport for verdi, kostnad og netto (generert fra GitHub-data)
+- Prosjektkostnader med rapport for verdi, kostnad og netto
 - Se oversikt, filtrering og statistikk
 - Skriv ut rapport eller lagre som PDF via nettleseren
 - Offline-stotte via service worker
@@ -23,8 +23,7 @@ Ekstremt enkel PWA for rask registrering av objekter under lageropprydding.
 - HTML
 - CSS
 - JavaScript
-- GitHub API (Device Flow OAuth)
-- IndexedDB (kun cache og offline-kø)
+- IndexedDB
 - Service Worker
 - Web App Manifest
 
@@ -32,12 +31,10 @@ Ekstremt enkel PWA for rask registrering av objekter under lageropprydding.
 
 - `index.html`: appskall og hovedvisninger
 - `styles.css`: mobil-forst design med store knapper
-- `app.js`: UI-logikk, hurtigregistrering, prosjekt, kostnader og rapport
-- `config.js`: GitHub-konfigurasjon (owner/repo/branch + clientId)
-- `githubAuth.js`: Device Flow innlogging
-- `githubStorageProvider.js`: GitHub som lagringsprovider
-- `offlineDb.js`: lokal cache og offline-kø (midlertidig)
-- `storageProvider.js`: provider-grensesnitt (for senere Supabase)
+- `app.js`: UI-logikk, hurtigregistrering, oversikt, kostnader og rapport
+- `db.js`: enkel datatilgang for IndexedDB
+- `projects.js`: prosjektlogikk og aktivt prosjekt
+- `valuation.js`: logikk for verdisetting og verdiberegning
 - `sw.js`: enkel caching av appskallet
 - `manifest.json`: PWA-konfigurasjon
 
@@ -51,16 +48,6 @@ Kodebasen er holdt enkel, men er strukturert slik at senere versjoner kan fa:
 - CSV- eller Excel-eksport
 - sky-synkronisering
 - integrasjon i Eiendomsappen
-
-## GitHub-innlogging (Device Flow)
-
-Appen bruker GitHub Device Flow og trenger en OAuth App Client ID.
-
-1. Lag en GitHub OAuth App
-2. Kopier Client ID
-3. Lim inn i `config.js` under `github.clientId`
-
-Appen lagrer ikke token i kildekoden.
 
 ## GitHub Pages
 

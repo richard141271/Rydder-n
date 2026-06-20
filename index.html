@@ -17,54 +17,11 @@
           <h1>Rydder'n</h1>
         </div>
         <div class="topbar-actions">
-          <span id="authStatus" class="auth-status hidden"></span>
-          <span id="syncStatus" class="sync-status hidden"></span>
-          <button id="loginButton" class="ghost-button" type="button">Logg inn</button>
-          <button id="logoutButton" class="ghost-button hidden" type="button">Logg ut</button>
           <button id="installButton" class="ghost-button hidden" type="button">Installer</button>
         </div>
       </header>
 
       <main class="main-content">
-        <section id="authView" class="panel hidden" aria-labelledby="authTitle">
-          <div class="panel-header">
-            <p class="eyebrow">GitHub</p>
-            <h2 id="authTitle">Logg inn for å bruke appen</h2>
-          </div>
-
-          <div class="report-card">
-            <p class="helper-text">
-              Rydder'n lagrer prosjekter og bilder i GitHub. Du logger inn én gang og appen committer
-              automatisk.
-            </p>
-            <button id="startDeviceFlowButton" class="primary-button full-width" type="button">
-              Start innlogging
-            </button>
-          </div>
-
-          <div class="report-card">
-            <p id="authError" class="auth-error hidden"></p>
-            <p class="eyebrow">Debug</p>
-            <div id="debugLines" class="debug-lines"></div>
-          </div>
-
-          <div id="deviceFlowCard" class="report-card hidden">
-            <p class="helper-text">
-              Åpne lenken, skriv inn koden, og kom tilbake hit. Innlogging fullføres automatisk.
-            </p>
-            <div class="device-flow-grid">
-              <a id="deviceFlowLink" class="secondary-button" href="#" target="_blank" rel="noreferrer">
-                Åpne GitHub
-              </a>
-              <button id="copyUserCodeButton" class="secondary-button" type="button">Kopier kode</button>
-            </div>
-            <div class="device-code">
-              <span class="eyebrow">Kode</span>
-              <strong id="deviceUserCode"></strong>
-            </div>
-          </div>
-        </section>
-
         <section class="project-strip" aria-labelledby="projectTitle">
           <div>
             <p class="eyebrow">Aktivt prosjekt</p>
@@ -88,7 +45,7 @@
               accept="image/*"
               capture="environment"
             />
-            <p class="helper-text">Bildet lastes opp til GitHub og knyttes til valgt prosjekt.</p>
+            <p class="helper-text">Bildet lagres lokalt i valgt prosjekt.</p>
           </div>
 
           <div id="draftPreview" class="draft-preview hidden">
