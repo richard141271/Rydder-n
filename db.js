@@ -19,6 +19,7 @@ function normalizeItem(item) {
     comment: "",
     condition: "",
     note: "",
+    imageHash: "",
     projectId: DEFAULT_PROJECT_ID,
     ...item,
   };

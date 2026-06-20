@@ -25,6 +25,7 @@ const FILTERS = ["Alle", ...ACTIONS];
 const state = {
   draft: {
     imageBlob: null,
+    imageHash: "",
     previewUrl: "",
     category: "",
   },
@@ -37,6 +38,8 @@ const state = {
   deferredInstallPrompt: null,
   renderedImageUrls: [],
   valuationImageUrl: "",
+  isSavingDraft: false,
+  isSavingValuation: false,
 };
 
 const elements = {
@@ -167,6 +170,29 @@ function tryOpenCamera() {
   }, 80);
 }
 
+async function hashBlob(blob) {
+  const buffer = await blob.arrayBuffer();
+  const digest = await crypto.subtle.digest("SHA-256", buffer);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function hasDuplicateImage(imageHash, excludeItemId = "") {
+  return state.items.some(
+    (item) =>
+      item.projectId === state.activeProjectId &&
+      item.imageHash &&
+      item.imageHash === imageHash &&
+      item.id !== excludeItemId,
+  );
+}
+
+function setActionButtonsDisabled(disabled) {
+  const buttons = elements.actionButtons.querySelectorAll("button");
+  for (const button of buttons) {
+    button.disabled = disabled;
+  }
+}
+
 function showRegisterCapture() {
   setVisibleView("captureView");
 }
@@ -197,6 +223,7 @@ function resetDraft() {
 
   state.draft = {
     imageBlob: null,
+    imageHash: "",
     previewUrl: "",
     category: "",
   };
@@ -454,32 +481,54 @@ function renderValuation() {
 }
 
 async function saveDraft(action) {
-  if (!state.draft.imageBlob || !state.draft.category || !state.activeProjectId) {
+  if (
+    state.isSavingDraft ||
+    !state.draft.imageBlob ||
+    !state.draft.imageHash ||
+    !state.draft.category ||
+    !state.activeProjectId
+  ) {
     return;
   }
 
-  const createdAt = Date.now();
-  const item = {
-    id: crypto.randomUUID(),
-    sequence: getNextSequence(),
-    createdAt,
-    date: formatDate(createdAt),
-    imageBlob: state.draft.imageBlob,
-    category: state.draft.category,
-    action,
-    projectId: state.activeProjectId,
-    value: null,
-    comment: "",
-    condition: "",
-    note: "",
-  };
+  if (hasDuplicateImage(state.draft.imageHash)) {
+    window.alert("Dette bildet er allerede registrert i prosjektet.");
+    resetDraft();
+    showRegisterCapture();
+    return;
+  }
 
-  await saveItem(item);
-  state.items = [item, ...state.items];
-  renderOverview();
-  resetDraft();
-  showRegisterCapture();
-  tryOpenCamera();
+  state.isSavingDraft = true;
+  setActionButtonsDisabled(true);
+
+  try {
+    const createdAt = Date.now();
+    const item = {
+      id: crypto.randomUUID(),
+      sequence: getNextSequence(),
+      createdAt,
+      date: formatDate(createdAt),
+      imageBlob: state.draft.imageBlob,
+      imageHash: state.draft.imageHash,
+      category: state.draft.category,
+      action,
+      projectId: state.activeProjectId,
+      value: null,
+      comment: "",
+      condition: "",
+      note: "",
+    };
+
+    await saveItem(item);
+    state.items = [item, ...state.items];
+    renderOverview();
+    resetDraft();
+    showRegisterCapture();
+    tryOpenCamera();
+  } finally {
+    state.isSavingDraft = false;
+    setActionButtonsDisabled(false);
+  }
 }
 
 async function handlePhotoChange(event) {
@@ -489,7 +538,15 @@ async function handlePhotoChange(event) {
   }
 
   resetDraft();
+  const imageHash = await hashBlob(file);
+  if (hasDuplicateImage(imageHash)) {
+    window.alert("Dette bildet er allerede registrert i prosjektet.");
+    showRegisterCapture();
+    return;
+  }
+
   state.draft.imageBlob = file;
+  state.draft.imageHash = imageHash;
   state.draft.previewUrl = URL.createObjectURL(file);
   elements.previewImage.src = state.draft.previewUrl;
   elements.draftPreview.classList.remove("hidden");
@@ -576,6 +633,10 @@ async function handleAddCost() {
 }
 
 async function handleValuationNext() {
+  if (state.isSavingValuation) {
+    return;
+  }
+
   const itemsWithoutValue = getItemsWithoutValue(state.items, state.activeProjectId);
   const currentItem = itemsWithoutValue[0];
   const value = sanitizeValue(elements.priceInput.value);
@@ -585,17 +646,25 @@ async function handleValuationNext() {
     return;
   }
 
-  const updatedItem = buildValuationPatch(currentItem, {
-    value,
-    comment: elements.commentInput.value,
-    condition: elements.conditionInput.value,
-    note: elements.noteInput.value,
-  });
+  state.isSavingValuation = true;
+  elements.valuationNextButton.disabled = true;
 
-  await saveItem(updatedItem);
-  state.items = state.items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
-  renderOverview();
-  renderValuation();
+  try {
+    const updatedItem = buildValuationPatch(currentItem, {
+      value,
+      comment: elements.commentInput.value,
+      condition: elements.conditionInput.value,
+      note: elements.noteInput.value,
+    });
+
+    await saveItem(updatedItem);
+    state.items = state.items.map((item) => (item.id === updatedItem.id ? updatedItem : item));
+    renderOverview();
+    renderValuation();
+  } finally {
+    state.isSavingValuation = false;
+    elements.valuationNextButton.disabled = false;
+  }
 }
 
 async function installApp() {
