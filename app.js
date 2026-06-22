@@ -79,6 +79,7 @@ const state = {
   isSavingValuation: false,
   isSavingDocEntry: false,
   isSavingDocMap: false,
+  isExportingDocs: false,
   projectRegistrationConfirmed: false,
   documentationDraft: createDocumentationDraft("finding"),
   documentationView: "docsEntryView",
@@ -635,12 +636,6 @@ async function shareExportedFile(blob, filename, title, text) {
   return false;
 }
 
-function createObjectUrlForState(list, blob) {
-  const url = URL.createObjectURL(blob);
-  list.push(url);
-  return url;
-}
-
 function cleanupDocsPrintImages() {
   for (const url of state.docsPrintImageUrls) {
     URL.revokeObjectURL(url);
@@ -661,6 +656,15 @@ async function loadImageFromBlob(blob) {
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+async function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Kunne ikke lese fil som data-url"));
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function getImageDimensions(blob) {
@@ -696,6 +700,35 @@ async function ensureDocxCompatibleImage(blob) {
   });
 }
 
+async function createOptimizedImageBlob(blob, maxWidth, maxHeight, quality = 0.82) {
+  const image = await loadImageFromBlob(blob);
+  const sourceWidth = image.naturalWidth || 1600;
+  const sourceHeight = image.naturalHeight || 1200;
+  const target = fitImageWithinBox(sourceWidth, sourceHeight, maxWidth, maxHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = target.width;
+  canvas.height = target.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return blob;
+  }
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((converted) => resolve(converted || blob), "image/jpeg", quality);
+  });
+}
+
+async function createPrintReadyDataUrl(blob, variant = "gallery") {
+  const optimized =
+    variant === "cover"
+      ? await createOptimizedImageBlob(blob, 1600, 1200, 0.86)
+      : await createOptimizedImageBlob(blob, 900, 900, 0.78);
+  return blobToDataUrl(optimized);
+}
+
 function getImageExtension(type) {
   if (type === "image/png") {
     return "png";
@@ -723,6 +756,17 @@ function ensureShareableFiles(images, prefix) {
       type: image.type || "image/jpeg",
     });
   });
+}
+
+function setDocsExportButtonsBusy(isBusy, label = "") {
+  state.isExportingDocs = isBusy;
+  elements.docsExportPdfButton.disabled = isBusy;
+  elements.docsExportPagesButton.disabled = isBusy;
+  elements.docsExportZipButton.disabled = isBusy;
+  elements.docsSaveAllImagesButton.disabled = isBusy;
+
+  elements.docsExportPdfButton.textContent = isBusy && label === "pdf" ? "Lager PDF ..." : "PDF";
+  elements.docsExportPagesButton.textContent = isBusy && label === "pages" ? "Lager Pages ..." : "Pages";
 }
 
 function createCategoryOptions() {
@@ -1180,7 +1224,38 @@ function createDocsPrintPage(title, subtitle = "") {
   return page;
 }
 
-function renderDocumentationPrintReport() {
+function createDocsPrintFooter(projectName, pageIndex, totalPages) {
+  const footer = document.createElement("footer");
+  footer.className = "docs-print-footer";
+
+  const left = document.createElement("span");
+  left.textContent = projectName || "Rydder'n";
+
+  const right = document.createElement("span");
+  right.textContent = `Side ${pageIndex} av ${totalPages}`;
+
+  footer.append(left, right);
+  return footer;
+}
+
+async function waitForImagesInContainer(container) {
+  const images = [...container.querySelectorAll("img")];
+  await Promise.all(
+    images.map(
+      (image) =>
+        new Promise((resolve) => {
+          if (image.complete && image.naturalWidth > 0) {
+            resolve(true);
+            return;
+          }
+          image.addEventListener("load", () => resolve(true), { once: true });
+          image.addEventListener("error", () => resolve(false), { once: true });
+        }),
+    ),
+  );
+}
+
+async function renderDocumentationPrintReport() {
   cleanupDocsPrintImages();
 
   const entries = getFilteredEvidenceEntries();
@@ -1221,7 +1296,7 @@ function renderDocumentationPrintReport() {
     if (firstImage) {
       const image = document.createElement("img");
       image.className = "docs-print-cover-image";
-      image.src = createObjectUrlForState(state.docsPrintImageUrls, firstImage);
+      image.src = await createPrintReadyDataUrl(firstImage, "cover");
       image.alt = `Forsidebilde for ${entry.entryNumber}`;
       coverBody.append(image);
     }
@@ -1239,8 +1314,8 @@ function renderDocumentationPrintReport() {
     coverPage.append(coverBody);
     pages.push(coverPage);
 
-    const galleryChunks = chunkArray((entry.images || []).slice(1), 12);
-    galleryChunks.forEach((images, chunkIndex) => {
+    const galleryChunks = chunkArray((entry.images || []).slice(1), 9);
+    for (const [chunkIndex, images] of galleryChunks.entries()) {
       const galleryPage = createDocsPrintPage(
         `${entry.entryNumber} · Bilder`,
         `Side ${chunkIndex + 1} · ${images.length} bilder`,
@@ -1255,7 +1330,7 @@ function renderDocumentationPrintReport() {
         frame.className = "docs-print-thumb";
 
         const image = document.createElement("img");
-        image.src = createObjectUrlForState(state.docsPrintImageUrls, imageBlob);
+        image.src = await createPrintReadyDataUrl(imageBlob, "gallery");
         image.alt = `${entry.entryNumber} bildegalleri`;
         frame.append(image);
         grid.append(frame);
@@ -1263,8 +1338,12 @@ function renderDocumentationPrintReport() {
 
       galleryPage.append(grid);
       pages.push(galleryPage);
-    });
+    }
   }
+
+  pages.forEach((page, index) => {
+    page.append(createDocsPrintFooter(project?.name || "Rydder'n", index + 1, pages.length));
+  });
 
   elements.docsPrintReport.replaceChildren(...pages);
   elements.docsPrintReport.classList.toggle("hidden", pages.length === 0);
@@ -1826,7 +1905,7 @@ async function buildDocumentationDocx() {
 
     const coverImage = (entry.images || [])[0];
     if (coverImage) {
-      const normalized = await ensureDocxCompatibleImage(coverImage);
+      const normalized = await createOptimizedImageBlob(await ensureDocxCompatibleImage(coverImage), 1600, 1200, 0.86);
       const extension = getImageExtension(normalized.type);
       const fileName = `image-${entryIndex + 1}-cover.${extension}`;
       const relationshipId = `rId${relationships.length + 1}`;
@@ -1847,7 +1926,7 @@ async function buildDocumentationDocx() {
       for (const row of chunkArray(images, 3)) {
         const cells = [];
         for (const imageBlob of row) {
-          const normalized = await ensureDocxCompatibleImage(imageBlob);
+          const normalized = await createOptimizedImageBlob(await ensureDocxCompatibleImage(imageBlob), 900, 900, 0.78);
           const extension = getImageExtension(normalized.type);
           const fileName = `image-${imageCounter}.${extension}`;
           const relationshipId = `rId${relationships.length + 1}`;
@@ -2014,7 +2093,15 @@ async function buildDocumentationDocx() {
 }
 
 async function exportDocsPages() {
-  await buildDocumentationDocx();
+  setDocsExportButtonsBusy(true, "pages");
+  try {
+    await buildDocumentationDocx();
+  } catch (error) {
+    window.alert(`Pages-eksport feilet: ${error?.message || String(error)}`);
+    throw error;
+  } finally {
+    setDocsExportButtonsBusy(false);
+  }
 }
 
 async function shareEntryImages(entry) {
@@ -2268,24 +2355,39 @@ function bindEvents() {
     renderDocumentationReport();
   });
   elements.docsExportPdfButton.addEventListener("click", () => {
-    // #region debug-point B:pdf-click
-    reportDebugEvent("B", "bindEvents:docsExportPdfButton", "PDF button clicked", {
-      entries: getFilteredEvidenceEntries().length,
-      activeProjectId: state.activeProjectId,
-    });
-    // #endregion
-    showDocsReport();
-    // #region debug-point B:pdf-before-render
-    reportDebugEvent("B", "bindEvents:docsExportPdfButton", "Before renderDocumentationPrintReport", {});
-    // #endregion
-    renderDocumentationPrintReport();
-    // #region debug-point B:pdf-after-render
-    reportDebugEvent("B", "bindEvents:docsExportPdfButton", "After renderDocumentationPrintReport", {
-      printPages: elements.docsPrintReport?.children.length || 0,
-    });
-    // #endregion
-    document.body.dataset.printMode = "docs-print";
-    window.setTimeout(() => window.print(), 60);
+    setDocsExportButtonsBusy(true, "pdf");
+    Promise.resolve()
+      .then(async () => {
+        // #region debug-point B:pdf-click
+        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "PDF button clicked", {
+          entries: getFilteredEvidenceEntries().length,
+          activeProjectId: state.activeProjectId,
+        });
+        // #endregion
+        showDocsReport();
+        // #region debug-point B:pdf-before-render
+        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "Before renderDocumentationPrintReport", {});
+        // #endregion
+        await renderDocumentationPrintReport();
+        await waitForImagesInContainer(elements.docsPrintReport);
+        // #region debug-point B:pdf-after-render
+        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "After renderDocumentationPrintReport", {
+          printPages: elements.docsPrintReport?.children.length || 0,
+        });
+        // #endregion
+        document.body.dataset.printMode = "docs-print";
+        window.setTimeout(() => window.print(), 120);
+      })
+      .catch((error) => {
+        window.alert(`PDF-eksport feilet: ${error?.message || String(error)}`);
+        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "PDF export failed", {
+          message: error?.message || String(error),
+          stack: error?.stack || "",
+        });
+      })
+      .finally(() => {
+        setDocsExportButtonsBusy(false);
+      });
   });
   elements.docsExportPagesButton.addEventListener("click", () => {
     // #region debug-point C:pages-click

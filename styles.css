@@ -420,6 +420,18 @@ img {
   display: none;
 }
 
+.docs-print-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6mm;
+  padding-top: 3mm;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .docs-gallery-button {
   padding: 0;
   background: transparent;
@@ -473,6 +485,21 @@ img {
 
 .report-actions {
   margin-bottom: 16px;
+}
+
+.report-search-form {
+  margin-bottom: 18px;
+}
+
+.docs-export-actions {
+  gap: 14px;
+  margin-top: 6px;
+  margin-bottom: 22px;
+}
+
+.docs-export-actions .secondary-button,
+.report-search-form .ghost-button {
+  min-height: 58px;
 }
 
 .report-summary {
@@ -819,6 +846,7 @@ img {
   body[data-print-mode="docs-print"] .docs-print-page {
     display: block;
     min-height: 0;
+    padding: 4mm 0 0;
     break-after: page;
     page-break-after: always;
   }
@@ -829,7 +857,9 @@ img {
   }
 
   body[data-print-mode="docs-print"] .docs-print-header {
-    margin-bottom: 6mm;
+    margin-bottom: 8mm;
+    padding-bottom: 4mm;
+    border-bottom: 1px solid var(--border);
   }
 
   body[data-print-mode="docs-print"] .docs-print-header h3,
@@ -839,26 +869,26 @@ img {
   }
 
   body[data-print-mode="docs-print"] .docs-print-subtitle {
-    margin-top: 2mm;
+    margin-top: 2.5mm;
     color: var(--muted);
   }
 
   body[data-print-mode="docs-print"] .docs-print-summary-grid,
   body[data-print-mode="docs-print"] .docs-print-meta {
     display: grid;
-    gap: 3mm;
+    gap: 4mm;
   }
 
   body[data-print-mode="docs-print"] .docs-print-cover-body {
     display: grid;
-    gap: 6mm;
+    gap: 7mm;
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
   body[data-print-mode="docs-print"] .docs-print-cover-image {
     width: 100%;
-    max-height: 145mm;
+    max-height: 132mm;
     object-fit: contain;
     border: 1px solid var(--border);
     border-radius: 4mm;
@@ -868,7 +898,7 @@ img {
   body[data-print-mode="docs-print"] .docs-print-gallery-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4mm;
+    gap: 4.5mm;
     align-items: start;
   }
 
@@ -884,6 +914,11 @@ img {
     border: 1px solid var(--border);
     border-radius: 3mm;
     background: #fff;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-line strong {
+    display: inline-block;
+    min-width: 26mm;
   }
 
   body[data-print-mode="docs"] .docs-item-card {
