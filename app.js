@@ -196,6 +196,24 @@ const elements = {
   docsEntryCardTemplate: document.querySelector("#docsEntryCardTemplate"),
 };
 
+// #region debug-point A:report-debug-helper
+function reportDebugEvent(hypothesisId, location, msg, data = {}) {
+  fetch("http://192.168.0.35:7777/event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "export-buttons",
+      runId: "pre-fix",
+      hypothesisId,
+      location,
+      msg: `[DEBUG] ${msg}`,
+      data,
+      ts: Date.now(),
+    }),
+  }).catch(() => {});
+}
+// #endregion
+
 function formatDate(timestamp) {
   return new Intl.DateTimeFormat("nb-NO", {
     year: "numeric",
@@ -2101,6 +2119,22 @@ function registerServiceWorker() {
 }
 
 function setupInstallPrompt() {
+  // #region debug-point A:global-errors
+  window.addEventListener("error", (event) => {
+    reportDebugEvent("A", "window:error", "Global error", {
+      message: event.message,
+      source: event.filename,
+      line: event.lineno,
+      column: event.colno,
+    });
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    reportDebugEvent("A", "window:unhandledrejection", "Unhandled rejection", {
+      reason: String(event.reason?.message || event.reason || ""),
+    });
+  });
+  // #endregion
+
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     state.deferredInstallPrompt = event;
@@ -2224,18 +2258,49 @@ function bindEvents() {
     renderDocumentationReport();
   });
   elements.docsClearSearchButton.addEventListener("click", () => {
+    // #region debug-point E:clear-search-click
+    reportDebugEvent("E", "bindEvents:docsClearSearchButton", "Clear search button clicked", {
+      searchValue: elements.docsSearchInput.value,
+    });
+    // #endregion
     state.documentationSearch = "";
     elements.docsSearchInput.value = "";
     renderDocumentationReport();
   });
   elements.docsExportPdfButton.addEventListener("click", () => {
+    // #region debug-point B:pdf-click
+    reportDebugEvent("B", "bindEvents:docsExportPdfButton", "PDF button clicked", {
+      entries: getFilteredEvidenceEntries().length,
+      activeProjectId: state.activeProjectId,
+    });
+    // #endregion
     showDocsReport();
+    // #region debug-point B:pdf-before-render
+    reportDebugEvent("B", "bindEvents:docsExportPdfButton", "Before renderDocumentationPrintReport", {});
+    // #endregion
     renderDocumentationPrintReport();
+    // #region debug-point B:pdf-after-render
+    reportDebugEvent("B", "bindEvents:docsExportPdfButton", "After renderDocumentationPrintReport", {
+      printPages: elements.docsPrintReport?.children.length || 0,
+    });
+    // #endregion
     document.body.dataset.printMode = "docs-print";
     window.setTimeout(() => window.print(), 60);
   });
   elements.docsExportPagesButton.addEventListener("click", () => {
+    // #region debug-point C:pages-click
+    reportDebugEvent("C", "bindEvents:docsExportPagesButton", "Pages button clicked", {
+      entries: getFilteredEvidenceEntries().length,
+      activeProjectId: state.activeProjectId,
+    });
+    // #endregion
     exportDocsPages().catch((error) => {
+      // #region debug-point C:pages-catch
+      reportDebugEvent("C", "bindEvents:docsExportPagesButton", "Pages export failed", {
+        message: error?.message || String(error),
+        stack: error?.stack || "",
+      });
+      // #endregion
       console.error("Kunne ikke eksportere Pages-fil", error);
     });
   });
@@ -2262,6 +2327,13 @@ async function loadState() {
 }
 
 async function init() {
+  // #region debug-point D:init-start
+  reportDebugEvent("D", "init", "Init start", {
+    hasPdfButton: Boolean(elements.docsExportPdfButton),
+    hasPagesButton: Boolean(elements.docsExportPagesButton),
+    hasPrintReport: Boolean(elements.docsPrintReport),
+  });
+  // #endregion
   renderCategoryButtons();
   renderActionButtons();
   elements.docsCategorySelect.replaceChildren(...createCategoryOptions());
@@ -2272,6 +2344,12 @@ async function init() {
   renderOverview();
   renderDocumentationModule();
   showRegisterCapture();
+  // #region debug-point D:init-complete
+  reportDebugEvent("D", "init", "Init complete", {
+    documentationView: state.documentationView,
+    currentView: state.currentView,
+  });
+  // #endregion
 }
 
 init().catch((error) => {
