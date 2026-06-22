@@ -414,7 +414,7 @@ img {
 
 .docs-card-summary {
   display: grid;
-  grid-template-columns: 112px 1fr;
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: start;
 }
@@ -423,6 +423,13 @@ img {
   display: grid;
   gap: 8px;
   align-content: start;
+}
+
+.docs-item-image {
+  width: 100%;
+  height: auto;
+  max-height: 260px;
+  object-fit: cover;
 }
 
 .docs-card-actions {
@@ -725,6 +732,16 @@ img {
   .docs-card-gallery {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .docs-card-summary {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .docs-item-image {
+    width: 112px;
+    height: 112px;
+    max-height: none;
+  }
 }
 
 @media print {
@@ -878,8 +895,8 @@ img {
   }
 
   body[data-print-mode="docs-print"] .docs-print-header {
-    margin-bottom: 8mm;
-    padding-bottom: 4mm;
+    margin-bottom: 6mm;
+    padding-bottom: 3mm;
     border-bottom: 1px solid var(--border);
   }
 
@@ -902,19 +919,19 @@ img {
 
   body[data-print-mode="docs-print"] .docs-print-cover-main {
     display: grid;
-    gap: 7mm;
+    gap: 5mm;
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
   body[data-print-mode="docs-print"] .docs-print-cover-body {
     display: grid;
-    gap: 7mm;
+    gap: 5mm;
   }
 
   body[data-print-mode="docs-print"] .docs-print-cover-image {
     width: 100%;
-    max-height: 132mm;
+    max-height: 118mm;
     object-fit: contain;
     border: 1px solid var(--border);
     border-radius: 4mm;

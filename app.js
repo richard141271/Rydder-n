@@ -38,8 +38,8 @@ const DOC_TYPES = [
   { id: "sample", label: "Ny prøve", prefix: "SP", shortLabel: "Prøve" },
 ];
 const DOC_VIEWS = ["docsEntryView", "docsMapView", "docsReportView"];
-const APP_CACHE_VERSION = "v11";
-const APP_COMMIT_FALLBACK = "6cce308";
+const APP_CACHE_VERSION = "v12";
+const APP_COMMIT_FALLBACK = "2174691";
 const REPO_COMMIT_API_URL = "https://api.github.com/repos/richard141271/Rydder-n/commits/main";
 
 function createDocumentationDraft(entryType) {
@@ -623,26 +623,6 @@ function downloadBlob(blob, filename) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 500);
-}
-
-async function shareExportedFile(blob, filename, title, text) {
-  const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
-  try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title,
-        text,
-      });
-      return true;
-    }
-  } catch {
-    downloadBlob(blob, filename);
-    return false;
-  }
-
-  downloadBlob(blob, filename);
-  return false;
 }
 
 function cleanupDocsPrintImages() {
@@ -1910,7 +1890,6 @@ async function buildDocumentationDocx() {
   const project = getActiveProject();
   const map = getActiveEvidenceMap();
   const entries = getFilteredEvidenceEntries();
-  const projectName = project?.name || "rapport";
   const reportTitle = "Dokumentasjonsrapport";
 
   const files = [];
@@ -2118,25 +2097,17 @@ async function buildDocumentationDocx() {
   );
 
   const docxZip = await buildStoredZip(files);
-  const docxBlob = new Blob([docxZip], {
+  return new Blob([docxZip], {
     type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
-  const shared = await shareExportedFile(
-    docxBlob,
-    `${slugify(projectName)}.docx`,
-    `${reportTitle} - ${projectName}`,
-    "Velg Pages i delingsarket for å åpne rapporten med bilder og flere sider.",
-  );
-
-  if (!shared) {
-    window.alert("Pages-dokumentet ble lastet ned som .docx. Åpne filen i Pages for å se hele rapporten med bilder.");
-  }
 }
 
 async function exportDocsPages() {
   setDocsExportButtonsBusy(true, "pages");
   try {
-    await buildDocumentationDocx();
+    const docxBlob = await buildDocumentationDocx();
+    downloadBlob(docxBlob, `${slugify(getActiveProject()?.name || "rapport")}.docx`);
+    window.alert("Pages-dokumentet er lastet ned. Aapne filen i Filer eller Pages for aa vise rapporten.");
   } catch (error) {
     window.alert(`Pages-eksport feilet: ${error?.message || String(error)}`);
     throw error;
