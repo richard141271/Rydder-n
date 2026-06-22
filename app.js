@@ -181,7 +181,8 @@ const elements = {
   docsSearchInput: document.querySelector("#docsSearchInput"),
   docsClearSearchButton: document.querySelector("#docsClearSearchButton"),
   docsExportPdfButton: document.querySelector("#docsExportPdfButton"),
-  docsExportWordButton: document.querySelector("#docsExportWordButton"),
+  docsExportPagesButton: document.querySelector("#docsExportPagesButton"),
+  docsSaveAllImagesButton: document.querySelector("#docsSaveAllImagesButton"),
   docsExportZipButton: document.querySelector("#docsExportZipButton"),
   docsReportSummary: document.querySelector("#docsReportSummary"),
   docsEntriesList: document.querySelector("#docsEntriesList"),
@@ -531,15 +532,6 @@ function cleanupValuationImage() {
   state.valuationImageUrl = "";
 }
 
-function blobToDataUrl(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
 function requestCurrentPosition() {
   if (!("geolocation" in navigator)) {
     return Promise.resolve(null);
@@ -568,6 +560,18 @@ function downloadBlob(blob, filename) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+function ensureShareableFiles(images, prefix) {
+  return (images || []).map((image, index) => {
+    if (image instanceof File) {
+      return image;
+    }
+    const extension = image.type === "image/png" ? "png" : "jpg";
+    return new File([image], `${prefix}-${String(index + 1).padStart(2, "0")}.${extension}`, {
+      type: image.type || "image/jpeg",
+    });
+  });
 }
 
 function createCategoryOptions() {
@@ -935,6 +939,8 @@ function renderDocumentationEntries() {
   const cards = entries.map((entry) => {
     const node = elements.docsEntryCardTemplate.content.firstElementChild.cloneNode(true);
     const image = node.querySelector(".item-image");
+    const gallery = node.querySelector(".docs-card-gallery");
+    const shareButton = node.querySelector(".docs-share-images-button");
     const imageUrl = entry.images?.[0] ? URL.createObjectURL(entry.images[0]) : "";
     if (imageUrl) {
       state.docsRenderedImageUrls.push(imageUrl);
@@ -953,6 +959,37 @@ function renderDocumentationEntries() {
     node.querySelector(".item-extra").textContent = `${entry.imageCount || entry.images?.length || 0} bilder · Risiko: ${
       entry.risk
     } · Kommentar: ${entry.comment || "-"}`;
+
+    const galleryItems = (entry.images || []).slice(1).map((imageBlob, index) => {
+      const thumbButton = document.createElement("button");
+      thumbButton.type = "button";
+      thumbButton.className = "docs-gallery-button";
+
+      const thumbImage = document.createElement("img");
+      const thumbUrl = URL.createObjectURL(imageBlob);
+      state.docsRenderedImageUrls.push(thumbUrl);
+      thumbImage.src = thumbUrl;
+      thumbImage.alt = `${entry.entryNumber} bilde ${index + 2}`;
+      thumbButton.append(thumbImage);
+      thumbButton.addEventListener("click", () => {
+        const fullUrl = URL.createObjectURL(imageBlob);
+        const popup = window.open(fullUrl, "_blank");
+        if (!popup) {
+          window.location.href = fullUrl;
+        }
+        window.setTimeout(() => URL.revokeObjectURL(fullUrl), 60000);
+      });
+      return thumbButton;
+    });
+
+    gallery.replaceChildren(...galleryItems);
+    gallery.classList.toggle("hidden", galleryItems.length === 0);
+    shareButton.classList.toggle("hidden", (entry.images || []).length === 0);
+    shareButton.addEventListener("click", () => {
+      shareEntryImages(entry).catch((error) => {
+        console.error("Kunne ikke dele bilder", error);
+      });
+    });
     return node;
   });
 
@@ -1281,102 +1318,6 @@ async function handleSaveDocMap() {
   }
 }
 
-async function buildDocumentationReportHtml() {
-  const project = getActiveProject();
-  const map = getActiveEvidenceMap();
-  const entries = getFilteredEvidenceEntries();
-  const summaryCounts = entries.reduce(
-    (result, entry) => {
-      result.images += entry.imageCount || entry.images?.length || 0;
-      result.categories[entry.category] = (result.categories[entry.category] || 0) + 1;
-      return result;
-    },
-    { images: 0, categories: {} },
-  );
-
-  const categoryHtml = Object.entries(summaryCounts.categories)
-    .sort((a, b) => b[1] - a[1])
-    .map(([category, count]) => `<li>${escapeHtml(category)}: ${count}</li>`)
-    .join("");
-
-  const entryHtml = await Promise.all(
-    entries.map(async (entry) => {
-      const imagesHtml = (
-        await Promise.all(
-          (entry.images || []).map(async (imageBlob) => {
-            const dataUrl = await blobToDataUrl(imageBlob);
-            return `<img src="${dataUrl}" alt="${escapeHtml(entry.entryNumber)}" style="max-width:220px;border-radius:12px;" />`;
-          }),
-        )
-      ).join("");
-
-      return `
-        <section style="page-break-inside: avoid; margin-bottom: 24px;">
-          <h3>${escapeHtml(entry.entryNumber)} - ${escapeHtml(getDocTypeConfig(entry.entryType).shortLabel)}</h3>
-          <p>Dato: ${escapeHtml(entry.createdDate)} ${escapeHtml(entry.createdTime)}</p>
-          <p>Kategori: ${escapeHtml(entry.category)}</p>
-          <p>Sone: ${escapeHtml(entry.zone || "-")}</p>
-          <p>Beskrivelse: ${escapeHtml(entry.description || "-")}</p>
-          <p>Kommentar: ${escapeHtml(entry.comment || "-")}</p>
-          <p>Risiko: ${escapeHtml(entry.risk)}</p>
-          <div style="display:flex;flex-wrap:wrap;gap:12px;">${imagesHtml || "<p>Ingen bilder</p>"}</div>
-        </section>
-      `;
-    }),
-  );
-
-  const appendixHtml = (
-    await Promise.all(
-      entries.map(async (entry) => {
-        const images = await Promise.all(
-          (entry.images || []).map(async (imageBlob, index) => {
-            const dataUrl = await blobToDataUrl(imageBlob);
-            return `
-              <figure style="page-break-inside: avoid; margin: 0 0 16px;">
-                <img src="${dataUrl}" alt="${escapeHtml(entry.entryNumber)} bilde ${index + 1}" style="max-width:240px;border-radius:12px;" />
-                <figcaption>${escapeHtml(entry.entryNumber)} - bilde ${index + 1}</figcaption>
-              </figure>
-            `;
-          }),
-        );
-        return images.join("");
-      }),
-    )
-  ).join("");
-
-  return `
-    <html lang="no">
-      <head>
-        <meta charset="utf-8" />
-        <title>Dokumentasjonsrapport</title>
-      </head>
-      <body style="font-family: Arial, Helvetica, sans-serif; color:#111827; padding:24px;">
-        <section style="page-break-after: always;">
-          <h1>Dokumentasjonsrapport</h1>
-          <p>Adresse: ${escapeHtml(map.address || "-")}</p>
-          <p>Dato: ${escapeHtml(formatDate(Date.now()))}</p>
-          <p>Saksnavn: ${escapeHtml(map.caseName || "-")}</p>
-          <p>Prosjekt: ${escapeHtml(project?.name || "-")}</p>
-        </section>
-        <section style="page-break-after: always;">
-          <h2>Oversikt</h2>
-          <p>Antall funn: ${entries.length}</p>
-          <p>Antall bilder: ${summaryCounts.images}</p>
-          <ul>${categoryHtml || "<li>Ingen kategorier</li>"}</ul>
-        </section>
-        <section style="page-break-after: always;">
-          <h2>Funnliste</h2>
-          ${entryHtml.join("") || "<p>Ingen funn registrert.</p>"}
-        </section>
-        <section>
-          <h2>Vedlegg</h2>
-          ${appendixHtml || "<p>Ingen bilder registrert.</p>"}
-        </section>
-      </body>
-    </html>
-  `;
-}
-
 function createCrc32Table() {
   const table = new Uint32Array(256);
   for (let i = 0; i < 256; i += 1) {
@@ -1486,9 +1427,79 @@ async function buildStoredZip(files) {
   return new Blob([...localParts, centralDirectory, endRecord], { type: "application/zip" });
 }
 
-async function exportDocsWord() {
-  const html = await buildDocumentationReportHtml();
-  downloadBlob(new Blob([html], { type: "application/msword" }), `${slugify(getActiveProject()?.name || "rapport")}.doc`);
+async function exportDocsPages() {
+  const project = getActiveProject();
+  const map = getActiveEvidenceMap();
+  const entries = getFilteredEvidenceEntries();
+  const lines = [
+    "{\\rtf1\\ansi\\deff0",
+    "{\\fonttbl{\\f0 Arial;}}",
+    "\\fs28\\b Dokumentasjonsrapport\\b0\\par",
+    `Prosjekt: ${String(project?.name || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`,
+    `Adresse: ${String(map.address || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`,
+    `Saksnavn: ${String(map.caseName || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`,
+    `Dato: ${formatDate(Date.now())}\\par\\par`,
+  ];
+
+  for (const entry of entries) {
+    lines.push(`\\b ${entry.entryNumber}\\b0\\par`);
+    lines.push(`Type: ${getDocTypeConfig(entry.entryType).shortLabel}\\par`);
+    lines.push(`Kategori: ${String(entry.category || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
+    lines.push(`Dato: ${entry.createdDate || formatDate(entry.createdAt)} ${entry.createdTime || formatTime(entry.createdAt)}\\par`);
+    lines.push(`Sone: ${String(entry.zone || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
+    lines.push(`Beskrivelse: ${String(entry.description || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
+    lines.push(`Kommentar: ${String(entry.comment || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
+    lines.push(`Bilder: ${entry.imageCount || entry.images?.length || 0}\\par\\par`);
+  }
+
+  lines.push("}");
+  downloadBlob(new Blob([lines.join("")], { type: "application/rtf" }), `${slugify(getActiveProject()?.name || "rapport")}.rtf`);
+}
+
+async function shareEntryImages(entry) {
+  const files = ensureShareableFiles(entry.images || [], slugify(entry.entryNumber || "bilde"));
+  if (files.length === 0) {
+    return;
+  }
+
+  if (navigator.canShare && navigator.canShare({ files })) {
+    await navigator.share({
+      files,
+      title: `${entry.entryNumber} bilder`,
+      text: "Velg 'Lagre i Bilder' i delingsarket hvis du vil ha full størrelse i bildebiblioteket.",
+    });
+    return;
+  }
+
+  for (const file of files) {
+    downloadBlob(file, file.name);
+  }
+  window.alert("Safari lot ikke appen sende bildene direkte til Bilder. Filene er lastet ned i full størrelse.");
+}
+
+async function shareAllDocumentationImages() {
+  const files = getFilteredEvidenceEntries().flatMap((entry) =>
+    ensureShareableFiles(entry.images || [], slugify(entry.entryNumber || "bilde")),
+  );
+
+  if (files.length === 0) {
+    window.alert("Ingen bilder funnet i rapporten.");
+    return;
+  }
+
+  if (navigator.canShare && navigator.canShare({ files })) {
+    await navigator.share({
+      files,
+      title: "Dokumentasjonsbilder",
+      text: "Velg 'Lagre i Bilder' i delingsarket for å lagre originalene i bildebiblioteket.",
+    });
+    return;
+  }
+
+  for (const file of files) {
+    downloadBlob(file, file.name);
+  }
+  window.alert("Safari lot ikke appen sende alle bildene direkte til Bilder. Filene er lastet ned i full størrelse.");
 }
 
 async function exportDocsZip() {
@@ -1661,9 +1672,14 @@ function bindEvents() {
     document.body.dataset.printMode = "docs";
     window.print();
   });
-  elements.docsExportWordButton.addEventListener("click", () => {
-    exportDocsWord().catch((error) => {
-      console.error("Kunne ikke eksportere Word", error);
+  elements.docsExportPagesButton.addEventListener("click", () => {
+    exportDocsPages().catch((error) => {
+      console.error("Kunne ikke eksportere Pages-fil", error);
+    });
+  });
+  elements.docsSaveAllImagesButton.addEventListener("click", () => {
+    shareAllDocumentationImages().catch((error) => {
+      console.error("Kunne ikke dele bilder", error);
     });
   });
   elements.docsExportZipButton.addEventListener("click", () => {
