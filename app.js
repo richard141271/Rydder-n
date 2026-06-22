@@ -38,6 +38,9 @@ const DOC_TYPES = [
   { id: "sample", label: "Ny prøve", prefix: "SP", shortLabel: "Prøve" },
 ];
 const DOC_VIEWS = ["docsEntryView", "docsMapView", "docsReportView"];
+const APP_CACHE_VERSION = "v11";
+const APP_COMMIT_FALLBACK = "6cce308";
+const REPO_COMMIT_API_URL = "https://api.github.com/repos/richard141271/Rydder-n/commits/main";
 
 function createDocumentationDraft(entryType) {
   return {
@@ -94,6 +97,7 @@ const elements = {
   overviewView: document.querySelector("#overviewView"),
   rydderenModule: document.querySelector("#rydderenModule"),
   documentationModule: document.querySelector("#documentationModule"),
+  appVersionBadge: document.querySelector("#appVersionBadge"),
   showRydderenModuleButton: document.querySelector("#showRydderenModuleButton"),
   showDocumentationModuleButton: document.querySelector("#showDocumentationModuleButton"),
   activeProjectSelect: document.querySelector("#activeProjectSelect"),
@@ -772,6 +776,32 @@ function setDocsExportButtonsBusy(isBusy, label = "") {
 
   elements.docsExportPdfButton.textContent = isBusy && label === "pdf" ? "Lager PDF ..." : "PDF";
   elements.docsExportPagesButton.textContent = isBusy && label === "pages" ? "Lager Pages ..." : "Pages";
+}
+
+function setAppVersionBadge(text) {
+  if (!elements.appVersionBadge) {
+    return;
+  }
+  elements.appVersionBadge.textContent = text;
+}
+
+async function renderAppVersionBadge() {
+  setAppVersionBadge(`cache ${APP_CACHE_VERSION} · main ...`);
+
+  try {
+    const response = await fetch(`${REPO_COMMIT_API_URL}?t=${Date.now()}`, {
+      cache: "no-store",
+      headers: { Accept: "application/vnd.github+json" },
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    const mainCommit = String(payload?.sha || APP_COMMIT_FALLBACK).slice(0, 7);
+    setAppVersionBadge(`cache ${APP_CACHE_VERSION} · main ${mainCommit}`);
+  } catch {
+    setAppVersionBadge(`cache ${APP_CACHE_VERSION} · main ${APP_COMMIT_FALLBACK}`);
+  }
 }
 
 function createCategoryOptions() {
@@ -2440,6 +2470,7 @@ async function loadState() {
 }
 
 async function init() {
+  renderAppVersionBadge().catch(() => {});
   // #region debug-point D:init-start
   reportDebugEvent("D", "init", "Init start", {
     hasPdfButton: Boolean(elements.docsExportPdfButton),
