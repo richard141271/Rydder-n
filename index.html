@@ -445,21 +445,23 @@
 
     <template id="docsEntryCardTemplate">
       <article class="item-card docs-item-card">
-        <img class="item-image docs-item-image" alt="Bilde fra dokumentasjon" />
-        <div class="item-content">
-          <div class="item-header">
-            <h3 class="item-id"></h3>
-            <span class="badge item-action"></span>
+        <div class="docs-card-summary">
+          <img class="item-image docs-item-image" alt="Bilde fra dokumentasjon" />
+          <div class="item-content">
+            <div class="item-header">
+              <h3 class="item-id"></h3>
+              <span class="badge item-action"></span>
+            </div>
+            <p class="item-meta"></p>
+            <p class="item-date"></p>
+            <p class="item-value"></p>
+            <p class="item-extra"></p>
+            <div class="docs-card-actions">
+              <button class="ghost-button docs-share-images-button" type="button">Til Bilder</button>
+            </div>
           </div>
-          <p class="item-meta"></p>
-          <p class="item-date"></p>
-          <p class="item-value"></p>
-          <p class="item-extra"></p>
-          <div class="docs-card-actions">
-            <button class="ghost-button docs-share-images-button" type="button">Til Bilder</button>
-          </div>
-          <div class="docs-card-gallery"></div>
         </div>
+        <div class="docs-card-gallery"></div>
       </article>
     </template>
 

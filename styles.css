@@ -386,10 +386,27 @@ img {
   color: var(--muted);
 }
 
+.docs-item-card {
+  display: grid;
+  gap: 12px;
+}
+
+.docs-card-summary {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.docs-card-summary .item-content {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
 .docs-card-actions {
   display: flex;
   gap: 10px;
-  margin-top: 12px;
 }
 
 .docs-card-gallery {
@@ -779,22 +796,56 @@ img {
   body[data-print-mode="docs"] .docs-item-card {
     display: block;
     width: 100%;
+    page-break-inside: auto;
+    break-inside: auto;
   }
 
   body[data-print-mode="docs"] .docs-item-image {
     width: 100%;
     height: auto;
-    max-height: none;
-    margin-bottom: 12px;
+    max-height: 110mm;
+    object-fit: cover;
+    margin-bottom: 0;
+  }
+
+  body[data-print-mode="docs"] .docs-item-card + .docs-item-card {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  body[data-print-mode="docs"] .docs-card-summary {
+    display: block;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 8mm;
+  }
+
+  body[data-print-mode="docs"] .docs-card-summary .item-content {
+    display: block;
+    margin-top: 5mm;
+  }
+
+  body[data-print-mode="docs"] .docs-card-summary .item-content p {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   body[data-print-mode="docs"] .docs-card-gallery {
     display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4mm;
+    align-items: start;
   }
 
   body[data-print-mode="docs"] .docs-gallery-button {
+    display: block;
+    page-break-inside: avoid;
     break-inside: avoid;
+  }
+
+  body[data-print-mode="docs"] .docs-gallery-button img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
   }
 }

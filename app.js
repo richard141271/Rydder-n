@@ -226,6 +226,15 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function escapeRtfText(value) {
+  return String(value ?? "")
+    .replaceAll("\\", "\\\\")
+    .replaceAll("{", "\\{")
+    .replaceAll("}", "\\}")
+    .replace(/\r\n|\r|\n/g, "\\line ")
+    .replace(/[^\x00-\x7f]/g, (character) => `\\u${character.charCodeAt(0)}?`);
+}
+
 function slugify(value) {
   return String(value || "")
     .toLowerCase()
@@ -581,6 +590,21 @@ function downloadBlob(blob, filename) {
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+async function shareExportedFile(blob, filename, title, text) {
+  const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({
+      files: [file],
+      title,
+      text,
+    });
+    return true;
+  }
+
+  downloadBlob(blob, filename);
+  return false;
 }
 
 function ensureShareableFiles(images, prefix) {
@@ -1461,29 +1485,42 @@ async function exportDocsPages() {
   const project = getActiveProject();
   const map = getActiveEvidenceMap();
   const entries = getFilteredEvidenceEntries();
+  const projectName = project?.name || "rapport";
+  const reportTitle = "Dokumentasjonsrapport";
   const lines = [
-    "{\\rtf1\\ansi\\deff0",
+    "{\\rtf1\\ansi\\ansicpg1252\\deff0\\uc1",
     "{\\fonttbl{\\f0 Arial;}}",
-    "\\fs28\\b Dokumentasjonsrapport\\b0\\par",
-    `Prosjekt: ${String(project?.name || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`,
-    `Adresse: ${String(map.address || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`,
-    `Saksnavn: ${String(map.caseName || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`,
+    "\\viewkind4\\paperw11907\\paperh16840\\margl720\\margr720\\margt720\\margb720",
+    `\\fs28\\b ${escapeRtfText(reportTitle)}\\b0\\par`,
+    `Prosjekt: ${escapeRtfText(project?.name || "-")}\\par`,
+    `Adresse: ${escapeRtfText(map.address || "-")}\\par`,
+    `Saksnavn: ${escapeRtfText(map.caseName || "-")}\\par`,
     `Dato: ${formatDate(Date.now())}\\par\\par`,
   ];
 
   for (const entry of entries) {
-    lines.push(`\\b ${entry.entryNumber}\\b0\\par`);
-    lines.push(`Type: ${getDocTypeConfig(entry.entryType).shortLabel}\\par`);
-    lines.push(`Kategori: ${String(entry.category || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
+    lines.push(`\\pard\\sa180\\b ${escapeRtfText(entry.entryNumber)}\\b0\\par`);
+    lines.push(`Type: ${escapeRtfText(getDocTypeConfig(entry.entryType).shortLabel)}\\par`);
+    lines.push(`Kategori: ${escapeRtfText(entry.category || "-")}\\par`);
     lines.push(`Dato: ${entry.createdDate || formatDate(entry.createdAt)} ${entry.createdTime || formatTime(entry.createdAt)}\\par`);
-    lines.push(`Sone: ${String(entry.zone || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
-    lines.push(`Beskrivelse: ${String(entry.description || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
-    lines.push(`Kommentar: ${String(entry.comment || "-").replaceAll("\\", "\\\\").replaceAll("{", "\\{").replaceAll("}", "\\}")}\\par`);
+    lines.push(`Sone: ${escapeRtfText(entry.zone || "-")}\\par`);
+    lines.push(`Beskrivelse: ${escapeRtfText(entry.description || "-")}\\par`);
+    lines.push(`Kommentar: ${escapeRtfText(entry.comment || "-")}\\par`);
     lines.push(`Bilder: ${entry.imageCount || entry.images?.length || 0}\\par\\par`);
   }
 
   lines.push("}");
-  downloadBlob(new Blob([lines.join("")], { type: "application/rtf" }), `${slugify(getActiveProject()?.name || "rapport")}.rtf`);
+  const rtfBlob = new Blob([lines.join("\r\n")], { type: "text/rtf;charset=utf-8" });
+  const shared = await shareExportedFile(
+    rtfBlob,
+    `${slugify(projectName)}.rtf`,
+    `${reportTitle} - ${projectName}`,
+    "Velg Pages i delingsarket for å åpne rapporten der.",
+  );
+
+  if (!shared) {
+    window.alert("Pages-dokumentet ble lastet ned som .rtf. Hvis iPhone ikke åpner det direkte, velg Del og deretter Pages.");
+  }
 }
 
 async function shareEntryImages(entry) {
