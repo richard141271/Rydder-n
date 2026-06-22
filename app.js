@@ -38,8 +38,8 @@ const DOC_TYPES = [
   { id: "sample", label: "Ny prøve", prefix: "SP", shortLabel: "Prøve" },
 ];
 const DOC_VIEWS = ["docsEntryView", "docsMapView", "docsReportView"];
-const APP_CACHE_VERSION = "v12";
-const APP_COMMIT_FALLBACK = "2174691";
+const APP_CACHE_VERSION = "v13";
+const APP_COMMIT_FALLBACK = "692a73f";
 const REPO_COMMIT_API_URL = "https://api.github.com/repos/richard141271/Rydder-n/commits/main";
 
 function createDocumentationDraft(entryType) {
@@ -1808,7 +1808,8 @@ async function buildStoredZip(files) {
     numberToBytes(0, 2),
   ]);
 
-  return new Blob([...localParts, centralDirectory, endRecord], { type: "application/zip" });
+  const archiveBytes = joinUint8Arrays([...localParts, centralDirectory, endRecord]);
+  return new Blob([archiveBytes.buffer], { type: "application/zip" });
 }
 
 function cmToEmu(value) {
