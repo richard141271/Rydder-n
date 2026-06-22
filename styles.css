@@ -388,6 +388,7 @@ img {
 
 .docs-item-card {
   display: grid;
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -879,11 +880,16 @@ img {
     gap: 4mm;
   }
 
-  body[data-print-mode="docs-print"] .docs-print-cover-body {
+  body[data-print-mode="docs-print"] .docs-print-cover-main {
     display: grid;
     gap: 7mm;
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-cover-body {
+    display: grid;
+    gap: 7mm;
   }
 
   body[data-print-mode="docs-print"] .docs-print-cover-image {

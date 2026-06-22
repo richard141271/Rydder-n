@@ -623,13 +623,18 @@ function downloadBlob(blob, filename) {
 
 async function shareExportedFile(blob, filename, title, text) {
   const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    await navigator.share({
-      files: [file],
-      title,
-      text,
-    });
-    return true;
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title,
+        text,
+      });
+      return true;
+    }
+  } catch {
+    downloadBlob(blob, filename);
+    return false;
   }
 
   downloadBlob(blob, filename);
@@ -1311,7 +1316,14 @@ async function renderDocumentationPrintReport() {
       createPrintTextLine("Bilder", String(entry.imageCount || entry.images?.length || 0)),
     );
     coverBody.append(meta);
-    coverPage.append(coverBody);
+    const coverHeader = coverPage.firstElementChild;
+    const coverMain = document.createElement("div");
+    coverMain.className = "docs-print-cover-main";
+    if (coverHeader) {
+      coverMain.append(coverHeader);
+    }
+    coverMain.append(coverBody);
+    coverPage.append(coverMain);
     pages.push(coverPage);
 
     const galleryChunks = chunkArray((entry.images || []).slice(1), 9);
@@ -1352,7 +1364,6 @@ async function renderDocumentationPrintReport() {
 function renderDocumentationReport() {
   renderZoneOptions();
   renderDocumentationEntries();
-  renderDocumentationPrintReport();
 }
 
 function renderDocumentationModule() {
