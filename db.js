@@ -1,10 +1,12 @@
 const DB_NAME = "rydderen-db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const DEFAULT_PROJECT_ID = "default-project";
 const STORE_ITEMS = "items";
 const STORE_PROJECTS = "projects";
 const STORE_COSTS = "projectCosts";
 const STORE_SETTINGS = "settings";
+const STORE_EVIDENCE_ENTRIES = "evidenceEntries";
+const STORE_EVIDENCE_MAPS = "evidenceMaps";
 
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
@@ -22,6 +24,41 @@ function normalizeItem(item) {
     imageHash: "",
     projectId: DEFAULT_PROJECT_ID,
     ...item,
+  };
+}
+
+function normalizeEvidenceEntry(entry) {
+  return {
+    category: "Annet",
+    description: "",
+    comment: "",
+    zone: "",
+    count: 1,
+    risk: "Middels",
+    images: [],
+    imageHashes: [],
+    gps: null,
+    projectId: DEFAULT_PROJECT_ID,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    createdDate: "",
+    createdTime: "",
+    imageCount: 0,
+    ...entry,
+  };
+}
+
+function normalizeEvidenceMap(map) {
+  return {
+    projectId: DEFAULT_PROJECT_ID,
+    rows: 3,
+    columns: 3,
+    zones: [],
+    sketch: "",
+    caseName: "",
+    address: "",
+    updatedAt: Date.now(),
+    ...map,
   };
 }
 
@@ -60,6 +97,19 @@ function openDatabase() {
         db.createObjectStore(STORE_SETTINGS, { keyPath: "key" });
       }
 
+      if (!db.objectStoreNames.contains(STORE_EVIDENCE_ENTRIES)) {
+        const store = db.createObjectStore(STORE_EVIDENCE_ENTRIES, { keyPath: "id" });
+        store.createIndex("projectId", "projectId", { unique: false });
+        store.createIndex("entryType", "entryType", { unique: false });
+        store.createIndex("createdAt", "createdAt", { unique: false });
+        store.createIndex("category", "category", { unique: false });
+        store.createIndex("zone", "zone", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(STORE_EVIDENCE_MAPS)) {
+        db.createObjectStore(STORE_EVIDENCE_MAPS, { keyPath: "projectId" });
+      }
+
       itemsStore.openCursor().onsuccess = (event) => {
         const cursor = event.target.result;
         if (!cursor) {
@@ -69,6 +119,32 @@ function openDatabase() {
         cursor.update(normalizeItem(cursor.value));
         cursor.continue();
       };
+
+      if (db.objectStoreNames.contains(STORE_EVIDENCE_ENTRIES)) {
+        const evidenceStore = request.transaction.objectStore(STORE_EVIDENCE_ENTRIES);
+        evidenceStore.openCursor().onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) {
+            return;
+          }
+
+          cursor.update(normalizeEvidenceEntry(cursor.value));
+          cursor.continue();
+        };
+      }
+
+      if (db.objectStoreNames.contains(STORE_EVIDENCE_MAPS)) {
+        const evidenceMapsStore = request.transaction.objectStore(STORE_EVIDENCE_MAPS);
+        evidenceMapsStore.openCursor().onsuccess = (event) => {
+          const cursor = event.target.result;
+          if (!cursor) {
+            return;
+          }
+
+          cursor.update(normalizeEvidenceMap(cursor.value));
+          cursor.continue();
+        };
+      }
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -144,18 +220,26 @@ export function deleteProject(projectId) {
 }
 
 export function deleteProjectAndData(projectId) {
-  return runTransaction([STORE_ITEMS, STORE_COSTS, STORE_PROJECTS], "readwrite", (transaction) => {
+  return runTransaction(
+    [STORE_ITEMS, STORE_COSTS, STORE_PROJECTS, STORE_EVIDENCE_ENTRIES, STORE_EVIDENCE_MAPS],
+    "readwrite",
+    (transaction) => {
     const itemsStore = transaction.objectStore(STORE_ITEMS);
     const costsStore = transaction.objectStore(STORE_COSTS);
     const projectsStore = transaction.objectStore(STORE_PROJECTS);
+    const evidenceEntriesStore = transaction.objectStore(STORE_EVIDENCE_ENTRIES);
+    const evidenceMapsStore = transaction.objectStore(STORE_EVIDENCE_MAPS);
 
     projectsStore.delete(projectId);
+    evidenceMapsStore.delete(projectId);
 
     return Promise.all([
       deleteByIndexValue(itemsStore, "projectId", projectId),
       deleteByIndexValue(costsStore, "projectId", projectId),
+      deleteByIndexValue(evidenceEntriesStore, "projectId", projectId),
     ]).then(() => true);
-  });
+    },
+  );
 }
 
 export function getProjects() {
@@ -176,6 +260,32 @@ export function getProjectCosts() {
   ).then((costs) => [...(costs || [])].sort((a, b) => b.createdAt - a.createdAt));
 }
 
+export function saveEvidenceEntry(entry) {
+  return runTransaction([STORE_EVIDENCE_ENTRIES], "readwrite", (transaction) =>
+    transaction.objectStore(STORE_EVIDENCE_ENTRIES).put(normalizeEvidenceEntry(entry)),
+  );
+}
+
+export function getEvidenceEntries() {
+  return runTransaction([STORE_EVIDENCE_ENTRIES], "readonly", (transaction) =>
+    requestToPromise(transaction.objectStore(STORE_EVIDENCE_ENTRIES).getAll()),
+  ).then((entries) =>
+    [...(entries || [])].map(normalizeEvidenceEntry).sort((a, b) => b.createdAt - a.createdAt),
+  );
+}
+
+export function saveEvidenceMap(map) {
+  return runTransaction([STORE_EVIDENCE_MAPS], "readwrite", (transaction) =>
+    transaction.objectStore(STORE_EVIDENCE_MAPS).put(normalizeEvidenceMap(map)),
+  );
+}
+
+export function getEvidenceMaps() {
+  return runTransaction([STORE_EVIDENCE_MAPS], "readonly", (transaction) =>
+    requestToPromise(transaction.objectStore(STORE_EVIDENCE_MAPS).getAll()),
+  ).then((maps) => [...(maps || [])].map(normalizeEvidenceMap));
+}
+
 export function saveSetting(key, value) {
   return runTransaction([STORE_SETTINGS], "readwrite", (transaction) =>
     transaction.objectStore(STORE_SETTINGS).put({ key, value }),
@@ -190,13 +300,15 @@ export function getSetting(key) {
 
 export function clearAllData() {
   return runTransaction(
-    [STORE_ITEMS, STORE_PROJECTS, STORE_COSTS, STORE_SETTINGS],
+    [STORE_ITEMS, STORE_PROJECTS, STORE_COSTS, STORE_SETTINGS, STORE_EVIDENCE_ENTRIES, STORE_EVIDENCE_MAPS],
     "readwrite",
     (transaction) => {
       transaction.objectStore(STORE_ITEMS).clear();
       transaction.objectStore(STORE_PROJECTS).clear();
       transaction.objectStore(STORE_COSTS).clear();
       transaction.objectStore(STORE_SETTINGS).clear();
+      transaction.objectStore(STORE_EVIDENCE_ENTRIES).clear();
+      transaction.objectStore(STORE_EVIDENCE_MAPS).clear();
       return true;
     },
   );

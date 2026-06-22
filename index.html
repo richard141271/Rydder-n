@@ -30,6 +30,15 @@
           <select id="activeProjectSelect" class="project-select" aria-label="Aktivt prosjekt"></select>
         </section>
 
+        <section class="module-switcher" aria-label="Moduler">
+          <button id="showRydderenModuleButton" class="module-button active" type="button">Rydder'n</button>
+          <button id="showDocumentationModuleButton" class="module-button" type="button">
+            Dokumentasjon &amp; Bevis
+          </button>
+        </section>
+
+        <div id="rydderenModule">
+
         <section id="captureView" class="panel active" aria-labelledby="captureTitle">
           <div class="panel-header">
             <p class="eyebrow">Registrering</p>
@@ -210,6 +219,203 @@
 
           <div id="itemsList" class="items-list" aria-live="polite"></div>
         </section>
+        </div>
+
+        <div id="documentationModule" class="hidden">
+          <section class="panel docs-menu-panel" aria-labelledby="docsMenuTitle">
+            <div class="panel-header">
+              <p class="eyebrow">Dokumentasjon først</p>
+              <h2 id="docsMenuTitle">Dokumentasjon &amp; Bevis</h2>
+            </div>
+            <div class="docs-menu-grid">
+              <button id="docsNewFindingButton" class="tile-button" type="button">Nytt funn</button>
+              <button id="docsNewObservationButton" class="tile-button" type="button">Ny observasjon</button>
+              <button id="docsNewDamageButton" class="tile-button" type="button">Ny skade</button>
+              <button id="docsNewMeasurementButton" class="tile-button" type="button">Ny måling</button>
+              <button id="docsNewSampleButton" class="tile-button" type="button">Ny prøve</button>
+              <button id="docsMapButton" class="secondary-button" type="button">Kartlegging</button>
+              <button id="docsReportsButton" class="secondary-button" type="button">Rapportoversikt</button>
+            </div>
+            <p class="helper-text">Ta bilde, skriv to ord, lagre. Alt annet er frivillig ekstra.</p>
+          </section>
+
+          <section id="docsEntryView" class="panel hidden" aria-labelledby="docsEntryTitle">
+            <div class="panel-header">
+              <p id="docsEntryEyebrow" class="eyebrow">Nytt funn</p>
+              <h2 id="docsEntryTitle">Registrer bevis</h2>
+            </div>
+
+            <div class="docs-meta-strip">
+              <span id="docsEntryNumber" class="badge"></span>
+              <span id="docsEntryTimestamp" class="badge muted-badge"></span>
+            </div>
+
+            <div class="camera-actions">
+              <label for="docsCameraInput" class="camera-button">Kamera</label>
+              <label for="docsGalleryInput" class="secondary-button camera-alt-button">Galleri</label>
+              <input
+                id="docsCameraInput"
+                class="visually-hidden"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                multiple
+              />
+              <input id="docsGalleryInput" class="visually-hidden" type="file" accept="image/*" multiple />
+            </div>
+
+            <div id="docsDraftImages" class="docs-image-grid hidden"></div>
+
+            <div class="quick-entry-grid">
+              <label class="field-block" for="docsCategorySelect">
+                <span>Kategori</span>
+                <select id="docsCategorySelect" class="text-input"></select>
+              </label>
+
+              <label class="field-block" for="docsDescriptionInput">
+                <span>Beskrivelse</span>
+                <input
+                  id="docsDescriptionInput"
+                  class="text-input"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="Kort beskrivelse"
+                />
+              </label>
+
+              <label class="field-block" for="docsZoneInput">
+                <span>Sone</span>
+                <input
+                  id="docsZoneInput"
+                  class="text-input"
+                  type="text"
+                  list="docsZoneOptions"
+                  autocomplete="off"
+                  placeholder="A1"
+                />
+                <datalist id="docsZoneOptions"></datalist>
+              </label>
+            </div>
+
+            <div id="docsMoreFields" class="more-fields hidden">
+              <label class="field-block" for="docsCommentInput">
+                <span>Kommentar</span>
+                <textarea id="docsCommentInput" class="text-input text-area" rows="3"></textarea>
+              </label>
+
+              <label class="field-block" for="docsCountInput">
+                <span>Antall</span>
+                <input
+                  id="docsCountInput"
+                  class="text-input"
+                  type="number"
+                  inputmode="numeric"
+                  min="1"
+                  step="1"
+                  value="1"
+                />
+              </label>
+
+              <label class="field-block" for="docsRiskSelect">
+                <span>Risikovurdering</span>
+                <select id="docsRiskSelect" class="text-input">
+                  <option>Lav</option>
+                  <option selected>Middels</option>
+                  <option>Høy</option>
+                  <option>Kritisk</option>
+                </select>
+              </label>
+            </div>
+
+            <p id="docsGpsStatus" class="helper-text">GPS lagres hvis tilgjengelig. Ellers lagres funnet uten GPS.</p>
+
+            <div class="valuation-actions">
+              <button id="docsSaveEntryButton" class="primary-button" type="button">Lagre</button>
+              <button id="docsMoreButton" class="secondary-button" type="button">Mer</button>
+              <button id="docsExitEntryButton" class="ghost-button" type="button">Avslutt</button>
+            </div>
+          </section>
+
+          <section id="docsMapView" class="panel hidden" aria-labelledby="docsMapTitle">
+            <div class="panel-header">
+              <p class="eyebrow">Kartleggingsmodus</p>
+              <h2 id="docsMapTitle">Soner og skisse</h2>
+            </div>
+
+            <div class="inline-form map-form">
+              <label class="field-block" for="docsCaseNameInput">
+                <span>Saksnavn</span>
+                <input id="docsCaseNameInput" class="text-input" type="text" autocomplete="off" />
+              </label>
+              <label class="field-block" for="docsAddressInput">
+                <span>Adresse</span>
+                <input id="docsAddressInput" class="text-input" type="text" autocomplete="off" />
+              </label>
+            </div>
+
+            <div class="inline-form map-form">
+              <label class="field-block" for="docsMapRowsInput">
+                <span>Rader</span>
+                <input id="docsMapRowsInput" class="text-input" type="number" min="1" max="8" value="3" />
+              </label>
+              <label class="field-block" for="docsMapColumnsInput">
+                <span>Kolonner</span>
+                <input id="docsMapColumnsInput" class="text-input" type="number" min="1" max="8" value="3" />
+              </label>
+              <button id="docsGenerateZonesButton" class="secondary-button" type="button">Lag rutenett</button>
+            </div>
+
+            <div id="docsZoneGrid" class="zone-grid"></div>
+
+            <label class="field-block" for="docsSketchInput">
+              <span>Skisse / notat</span>
+              <textarea
+                id="docsSketchInput"
+                class="text-input text-area"
+                rows="6"
+                placeholder="Tegn enkelt med tekst: dør, sluk, vegg, rør, målepunkt ..."
+              ></textarea>
+            </label>
+
+            <div class="flow-actions">
+              <button id="docsSaveMapButton" class="primary-button" type="button">Lagre kartlegging</button>
+              <button id="docsExitMapButton" class="ghost-button" type="button">Avslutt</button>
+            </div>
+          </section>
+
+          <section id="docsReportView" class="panel hidden" aria-labelledby="docsReportTitle">
+            <div class="panel-header">
+              <p class="eyebrow">Rapportoversikt</p>
+              <h2 id="docsReportTitle">Funn, skader og observasjoner</h2>
+            </div>
+
+            <div class="inline-form report-search-form">
+              <input
+                id="docsSearchInput"
+                class="text-input"
+                type="search"
+                autocomplete="off"
+                placeholder="Søk på nummer, kategori, dato, sone eller tekst"
+              />
+              <button id="docsClearSearchButton" class="ghost-button" type="button">Nullstill</button>
+            </div>
+
+            <div class="report-actions docs-export-actions">
+              <button id="docsExportPdfButton" class="secondary-button" type="button">PDF</button>
+              <button id="docsExportWordButton" class="secondary-button" type="button">Word</button>
+              <button id="docsExportZipButton" class="secondary-button" type="button">ZIP med bilder</button>
+            </div>
+
+            <div class="report-card">
+              <h3>Dokumentasjonsrapport</h3>
+              <div id="docsReportSummary" class="report-summary"></div>
+            </div>
+
+            <div id="docsReportEmptyState" class="empty-state hidden">Ingen funn registrert i valgt prosjekt.</div>
+
+            <div id="docsEntriesList" class="items-list" aria-live="polite"></div>
+          </section>
+        </div>
       </main>
 
       <nav class="bottom-nav" aria-label="Hovednavigasjon">
@@ -230,6 +436,22 @@
           <p class="item-meta"></p>
           <p class="item-date"></p>
           <p class="item-value"></p>
+        </div>
+      </article>
+    </template>
+
+    <template id="docsEntryCardTemplate">
+      <article class="item-card docs-item-card">
+        <img class="item-image docs-item-image" alt="Bilde fra dokumentasjon" />
+        <div class="item-content">
+          <div class="item-header">
+            <h3 class="item-id"></h3>
+            <span class="badge item-action"></span>
+          </div>
+          <p class="item-meta"></p>
+          <p class="item-date"></p>
+          <p class="item-value"></p>
+          <p class="item-extra"></p>
         </div>
       </article>
     </template>
