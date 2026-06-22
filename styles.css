@@ -416,6 +416,10 @@ img {
   margin-top: 12px;
 }
 
+.docs-print-report {
+  display: none;
+}
+
 .docs-gallery-button {
   padding: 0;
   background: transparent;
@@ -715,17 +719,22 @@ img {
 
   body[data-print-mode="docs"] #overviewView,
   body[data-print-mode="docs"] #rydderenModule,
+  body[data-print-mode="docs-print"] #overviewView,
+  body[data-print-mode="docs-print"] #rydderenModule,
   body[data-print-mode="overview"] #documentationModule,
   body[data-print-mode="overview"] #docsReportView {
     display: none !important;
   }
 
   body[data-print-mode="docs"] #documentationModule,
-  body[data-print-mode="docs"] #docsReportView {
+  body[data-print-mode="docs"] #docsReportView,
+  body[data-print-mode="docs-print"] #documentationModule,
+  body[data-print-mode="docs-print"] #docsReportView {
     display: block !important;
   }
 
-  body[data-print-mode="docs"] #docsReportView {
+  body[data-print-mode="docs"] #docsReportView,
+  body[data-print-mode="docs-print"] #docsReportView {
     box-shadow: none;
     border: 0;
     padding: 0;
@@ -789,8 +798,92 @@ img {
 
   body[data-print-mode="docs"] .docs-export-actions,
   body[data-print-mode="docs"] .report-search-form,
-  body[data-print-mode="docs"] .docs-card-actions {
+  body[data-print-mode="docs"] .docs-card-actions,
+  body[data-print-mode="docs-print"] .docs-export-actions,
+  body[data-print-mode="docs-print"] .report-search-form,
+  body[data-print-mode="docs-print"] .docs-card-actions {
     display: none !important;
+  }
+
+  body[data-print-mode="docs-print"] #docsReportView > .panel-header,
+  body[data-print-mode="docs-print"] #docsReportView > .report-card,
+  body[data-print-mode="docs-print"] #docsReportView > #docsEntriesList,
+  body[data-print-mode="docs-print"] #docsReportView > #docsReportEmptyState {
+    display: none !important;
+  }
+
+  body[data-print-mode="docs-print"] #docsPrintReport {
+    display: block !important;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-page {
+    display: block;
+    min-height: 0;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-header {
+    margin-bottom: 6mm;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-header h3,
+  body[data-print-mode="docs-print"] .docs-print-subtitle,
+  body[data-print-mode="docs-print"] .docs-print-line {
+    margin: 0;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-subtitle {
+    margin-top: 2mm;
+    color: var(--muted);
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-summary-grid,
+  body[data-print-mode="docs-print"] .docs-print-meta {
+    display: grid;
+    gap: 3mm;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-cover-body {
+    display: grid;
+    gap: 6mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-cover-image {
+    width: 100%;
+    max-height: 145mm;
+    object-fit: contain;
+    border: 1px solid var(--border);
+    border-radius: 4mm;
+    background: #fff;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4mm;
+    align-items: start;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-thumb {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body[data-print-mode="docs-print"] .docs-print-thumb img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    border-radius: 3mm;
+    background: #fff;
   }
 
   body[data-print-mode="docs"] .docs-item-card {

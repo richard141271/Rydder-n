@@ -74,6 +74,7 @@ const state = {
   valuationImageUrl: "",
   docsRenderedImageUrls: [],
   docsDraftPreviewUrls: [],
+  docsPrintImageUrls: [],
   isSavingDraft: false,
   isSavingValuation: false,
   isSavingDocEntry: false,
@@ -191,6 +192,7 @@ const elements = {
   docsReportSummary: document.querySelector("#docsReportSummary"),
   docsEntriesList: document.querySelector("#docsEntriesList"),
   docsReportEmptyState: document.querySelector("#docsReportEmptyState"),
+  docsPrintReport: document.querySelector("#docsPrintReport"),
   docsEntryCardTemplate: document.querySelector("#docsEntryCardTemplate"),
 };
 
@@ -226,13 +228,21 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function escapeRtfText(value) {
+function escapeXml(value) {
   return String(value ?? "")
-    .replaceAll("\\", "\\\\")
-    .replaceAll("{", "\\{")
-    .replaceAll("}", "\\}")
-    .replace(/\r\n|\r|\n/g, "\\line ")
-    .replace(/[^\x00-\x7f]/g, (character) => `\\u${character.charCodeAt(0)}?`);
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function chunkArray(items, size) {
+  const chunks = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function slugify(value) {
@@ -605,6 +615,84 @@ async function shareExportedFile(blob, filename, title, text) {
 
   downloadBlob(blob, filename);
   return false;
+}
+
+function createObjectUrlForState(list, blob) {
+  const url = URL.createObjectURL(blob);
+  list.push(url);
+  return url;
+}
+
+function cleanupDocsPrintImages() {
+  for (const url of state.docsPrintImageUrls) {
+    URL.revokeObjectURL(url);
+  }
+  state.docsPrintImageUrls = [];
+}
+
+async function loadImageFromBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Kunne ikke lese bilde"));
+      element.src = url;
+    });
+    return image;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function getImageDimensions(blob) {
+  try {
+    const image = await loadImageFromBlob(blob);
+    return {
+      width: image.naturalWidth || 1600,
+      height: image.naturalHeight || 1200,
+    };
+  } catch {
+    return { width: 1600, height: 1200 };
+  }
+}
+
+async function ensureDocxCompatibleImage(blob) {
+  const type = blob.type || "image/jpeg";
+  if (type === "image/jpeg" || type === "image/png") {
+    return blob;
+  }
+
+  const image = await loadImageFromBlob(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = image.naturalWidth || 1600;
+  canvas.height = image.naturalHeight || 1200;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return blob;
+  }
+  context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((converted) => resolve(converted || blob), "image/jpeg", 0.92);
+  });
+}
+
+function getImageExtension(type) {
+  if (type === "image/png") {
+    return "png";
+  }
+  return "jpg";
+}
+
+function fitImageWithinBox(width, height, maxWidth, maxHeight) {
+  const safeWidth = Math.max(1, width || 1);
+  const safeHeight = Math.max(1, height || 1);
+  const ratio = Math.min(maxWidth / safeWidth, maxHeight / safeHeight);
+  return {
+    width: Math.max(1, Math.round(safeWidth * ratio)),
+    height: Math.max(1, Math.round(safeHeight * ratio)),
+  };
 }
 
 function ensureShareableFiles(images, prefix) {
@@ -1041,9 +1129,133 @@ function renderDocumentationEntries() {
   elements.docsEntriesList.replaceChildren(...cards);
 }
 
+function createPrintTextLine(label, value) {
+  const row = document.createElement("p");
+  row.className = "docs-print-line";
+
+  const strong = document.createElement("strong");
+  strong.textContent = `${label}: `;
+  row.append(strong, document.createTextNode(value || "-"));
+  return row;
+}
+
+function createDocsPrintPage(title, subtitle = "") {
+  const page = document.createElement("article");
+  page.className = "docs-print-page";
+
+  const header = document.createElement("header");
+  header.className = "docs-print-header";
+
+  const titleElement = document.createElement("h3");
+  titleElement.textContent = title;
+
+  const subtitleElement = document.createElement("p");
+  subtitleElement.className = "docs-print-subtitle";
+  subtitleElement.textContent = subtitle;
+
+  header.append(titleElement);
+  if (subtitle) {
+    header.append(subtitleElement);
+  }
+
+  page.append(header);
+  return page;
+}
+
+function renderDocumentationPrintReport() {
+  cleanupDocsPrintImages();
+
+  const entries = getFilteredEvidenceEntries();
+  const project = getActiveProject();
+  const map = getActiveEvidenceMap();
+  const totalImages = entries.reduce((sum, entry) => sum + (entry.imageCount || entry.images?.length || 0), 0);
+  const pages = [];
+
+  const summaryPage = createDocsPrintPage(
+    "Dokumentasjonsrapport",
+    `${project?.name || "Uten prosjekt"} · ${formatDate(Date.now())}`,
+  );
+  summaryPage.classList.add("docs-print-summary-page");
+
+  const summaryGrid = document.createElement("div");
+  summaryGrid.className = "docs-print-summary-grid";
+  summaryGrid.append(
+    createPrintTextLine("Prosjekt", project?.name || "-"),
+    createPrintTextLine("Adresse", map.address || "-"),
+    createPrintTextLine("Saksnavn", map.caseName || "-"),
+    createPrintTextLine("Antall funn", String(entries.length)),
+    createPrintTextLine("Antall bilder", String(totalImages)),
+  );
+  summaryPage.append(summaryGrid);
+  pages.push(summaryPage);
+
+  for (const entry of entries) {
+    const coverPage = createDocsPrintPage(
+      `${entry.entryNumber} · ${getDocTypeConfig(entry.entryType).shortLabel}`,
+      `${entry.category} · ${entry.createdDate || formatDate(entry.createdAt)} ${entry.createdTime || formatTime(entry.createdAt)}`,
+    );
+    coverPage.classList.add("docs-print-cover-page");
+
+    const coverBody = document.createElement("div");
+    coverBody.className = "docs-print-cover-body";
+
+    const firstImage = (entry.images || [])[0];
+    if (firstImage) {
+      const image = document.createElement("img");
+      image.className = "docs-print-cover-image";
+      image.src = createObjectUrlForState(state.docsPrintImageUrls, firstImage);
+      image.alt = `Forsidebilde for ${entry.entryNumber}`;
+      coverBody.append(image);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "docs-print-meta";
+    meta.append(
+      createPrintTextLine("Sone", entry.zone || "-"),
+      createPrintTextLine("Risiko", entry.risk || "-"),
+      createPrintTextLine("Beskrivelse", entry.description || "-"),
+      createPrintTextLine("Kommentar", entry.comment || "-"),
+      createPrintTextLine("Bilder", String(entry.imageCount || entry.images?.length || 0)),
+    );
+    coverBody.append(meta);
+    coverPage.append(coverBody);
+    pages.push(coverPage);
+
+    const galleryChunks = chunkArray((entry.images || []).slice(1), 12);
+    galleryChunks.forEach((images, chunkIndex) => {
+      const galleryPage = createDocsPrintPage(
+        `${entry.entryNumber} · Bilder`,
+        `Side ${chunkIndex + 1} · ${images.length} bilder`,
+      );
+      galleryPage.classList.add("docs-print-gallery-page");
+
+      const grid = document.createElement("div");
+      grid.className = "docs-print-gallery-grid";
+
+      for (const imageBlob of images) {
+        const frame = document.createElement("div");
+        frame.className = "docs-print-thumb";
+
+        const image = document.createElement("img");
+        image.src = createObjectUrlForState(state.docsPrintImageUrls, imageBlob);
+        image.alt = `${entry.entryNumber} bildegalleri`;
+        frame.append(image);
+        grid.append(frame);
+      }
+
+      galleryPage.append(grid);
+      pages.push(galleryPage);
+    });
+  }
+
+  elements.docsPrintReport.replaceChildren(...pages);
+  elements.docsPrintReport.classList.toggle("hidden", pages.length === 0);
+}
+
 function renderDocumentationReport() {
   renderZoneOptions();
   renderDocumentationEntries();
+  renderDocumentationPrintReport();
 }
 
 function renderDocumentationModule() {
@@ -1481,46 +1693,310 @@ async function buildStoredZip(files) {
   return new Blob([...localParts, centralDirectory, endRecord], { type: "application/zip" });
 }
 
-async function exportDocsPages() {
+function cmToEmu(value) {
+  return Math.round(value * 360000);
+}
+
+function cmToTwip(value) {
+  return Math.round(value * 567);
+}
+
+function createDocxParagraph(text, { style = "", bold = false, align = "", pageBreakBefore = false } = {}) {
+  const parts = ["<w:p>"];
+  if (style || align || pageBreakBefore) {
+    parts.push("<w:pPr>");
+    if (style) {
+      parts.push(`<w:pStyle w:val="${style}"/>`);
+    }
+    if (align) {
+      parts.push(`<w:jc w:val="${align}"/>`);
+    }
+    if (pageBreakBefore) {
+      parts.push("<w:pageBreakBefore/>");
+    }
+    parts.push("</w:pPr>");
+  }
+
+  parts.push("<w:r>");
+  if (bold) {
+    parts.push("<w:rPr><w:b/></w:rPr>");
+  }
+  parts.push(`<w:t xml:space="preserve">${escapeXml(text)}</w:t>`);
+  parts.push("</w:r></w:p>");
+  return parts.join("");
+}
+
+function createDocxPageBreak() {
+  return "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>";
+}
+
+async function createDocxImageParagraph(imageBlob, imageName, relationshipId, docPrId, maxWidthCm, maxHeightCm) {
+  const dimensions = await getImageDimensions(imageBlob);
+  const target = fitImageWithinBox(dimensions.width, dimensions.height, cmToEmu(maxWidthCm), cmToEmu(maxHeightCm));
+  return [
+    "<w:p>",
+    "<w:pPr><w:jc w:val=\"center\"/></w:pPr>",
+    "<w:r><w:drawing>",
+    "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\">",
+    `<wp:extent cx="${target.width}" cy="${target.height}"/>`,
+    "<wp:effectExtent l=\"0\" t=\"0\" r=\"0\" b=\"0\"/>",
+    `<wp:docPr id="${docPrId}" name="${escapeXml(imageName)}"/>`,
+    "<wp:cNvGraphicFramePr>",
+    "<a:graphicFrameLocks xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" noChangeAspect=\"1\"/>",
+    "</wp:cNvGraphicFramePr>",
+    "<a:graphic xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\">",
+    "<a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">",
+    "<pic:pic xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">",
+    "<pic:nvPicPr>",
+    `<pic:cNvPr id="${docPrId}" name="${escapeXml(imageName)}"/>`,
+    "<pic:cNvPicPr/>",
+    "</pic:nvPicPr>",
+    "<pic:blipFill>",
+    `<a:blip r:embed="${relationshipId}"/>`,
+    "<a:stretch><a:fillRect/></a:stretch>",
+    "</pic:blipFill>",
+    "<pic:spPr>",
+    `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${target.width}" cy="${target.height}"/></a:xfrm>`,
+    "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom>",
+    "</pic:spPr>",
+    "</pic:pic>",
+    "</a:graphicData>",
+    "</a:graphic>",
+    "</wp:inline>",
+    "</w:drawing></w:r>",
+    "</w:p>",
+  ].join("");
+}
+
+async function buildDocumentationDocx() {
   const project = getActiveProject();
   const map = getActiveEvidenceMap();
   const entries = getFilteredEvidenceEntries();
   const projectName = project?.name || "rapport";
   const reportTitle = "Dokumentasjonsrapport";
-  const lines = [
-    "{\\rtf1\\ansi\\ansicpg1252\\deff0\\uc1",
-    "{\\fonttbl{\\f0 Arial;}}",
-    "\\viewkind4\\paperw11907\\paperh16840\\margl720\\margr720\\margt720\\margb720",
-    `\\fs28\\b ${escapeRtfText(reportTitle)}\\b0\\par`,
-    `Prosjekt: ${escapeRtfText(project?.name || "-")}\\par`,
-    `Adresse: ${escapeRtfText(map.address || "-")}\\par`,
-    `Saksnavn: ${escapeRtfText(map.caseName || "-")}\\par`,
-    `Dato: ${formatDate(Date.now())}\\par\\par`,
+
+  const files = [];
+  const relationships = [
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
+  ];
+  const bodyParts = [
+    createDocxParagraph(reportTitle, { style: "Title" }),
+    createDocxParagraph(`Prosjekt: ${project?.name || "-"}`),
+    createDocxParagraph(`Adresse: ${map.address || "-"}`),
+    createDocxParagraph(`Saksnavn: ${map.caseName || "-"}`),
+    createDocxParagraph(`Dato: ${formatDate(Date.now())}`),
+    createDocxParagraph(`Antall funn: ${entries.length}`),
+    createDocxParagraph(
+      `Antall bilder: ${entries.reduce((sum, entry) => sum + (entry.imageCount || entry.images?.length || 0), 0)}`,
+    ),
   ];
 
-  for (const entry of entries) {
-    lines.push(`\\pard\\sa180\\b ${escapeRtfText(entry.entryNumber)}\\b0\\par`);
-    lines.push(`Type: ${escapeRtfText(getDocTypeConfig(entry.entryType).shortLabel)}\\par`);
-    lines.push(`Kategori: ${escapeRtfText(entry.category || "-")}\\par`);
-    lines.push(`Dato: ${entry.createdDate || formatDate(entry.createdAt)} ${entry.createdTime || formatTime(entry.createdAt)}\\par`);
-    lines.push(`Sone: ${escapeRtfText(entry.zone || "-")}\\par`);
-    lines.push(`Beskrivelse: ${escapeRtfText(entry.description || "-")}\\par`);
-    lines.push(`Kommentar: ${escapeRtfText(entry.comment || "-")}\\par`);
-    lines.push(`Bilder: ${entry.imageCount || entry.images?.length || 0}\\par\\par`);
+  let imageCounter = 1;
+  let docPrId = 1;
+
+  for (const [entryIndex, entry] of entries.entries()) {
+    bodyParts.push(createDocxPageBreak());
+    bodyParts.push(createDocxParagraph(`${entry.entryNumber} - ${getDocTypeConfig(entry.entryType).shortLabel}`, { style: "Heading1" }));
+    bodyParts.push(createDocxParagraph(`Kategori: ${entry.category || "-"}`));
+    bodyParts.push(
+      createDocxParagraph(`Dato: ${entry.createdDate || formatDate(entry.createdAt)} ${entry.createdTime || formatTime(entry.createdAt)}`),
+    );
+    bodyParts.push(createDocxParagraph(`Sone: ${entry.zone || "-"}`));
+    bodyParts.push(createDocxParagraph(`Risiko: ${entry.risk || "-"}`));
+    bodyParts.push(createDocxParagraph(`Beskrivelse: ${entry.description || "-"}`));
+    bodyParts.push(createDocxParagraph(`Kommentar: ${entry.comment || "-"}`));
+
+    const coverImage = (entry.images || [])[0];
+    if (coverImage) {
+      const normalized = await ensureDocxCompatibleImage(coverImage);
+      const extension = getImageExtension(normalized.type);
+      const fileName = `image-${entryIndex + 1}-cover.${extension}`;
+      const relationshipId = `rId${relationships.length + 1}`;
+      relationships.push(
+        `<Relationship Id="${relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${fileName}"/>`,
+      );
+      files.push({ name: `word/media/${fileName}`, blob: normalized });
+      bodyParts.push(await createDocxImageParagraph(normalized, fileName, relationshipId, docPrId, 16.5, 14.5));
+      imageCounter += 1;
+      docPrId += 1;
+    }
+
+    const galleryChunks = chunkArray((entry.images || []).slice(1), 12);
+    for (const images of galleryChunks) {
+      bodyParts.push(createDocxPageBreak());
+      bodyParts.push(createDocxParagraph(`${entry.entryNumber} - bildegalleri`, { style: "Heading2" }));
+
+      for (const row of chunkArray(images, 3)) {
+        const cells = [];
+        for (const imageBlob of row) {
+          const normalized = await ensureDocxCompatibleImage(imageBlob);
+          const extension = getImageExtension(normalized.type);
+          const fileName = `image-${imageCounter}.${extension}`;
+          const relationshipId = `rId${relationships.length + 1}`;
+          relationships.push(
+            `<Relationship Id="${relationshipId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${fileName}"/>`,
+          );
+          files.push({ name: `word/media/${fileName}`, blob: normalized });
+          const imageXml = await createDocxImageParagraph(normalized, fileName, relationshipId, docPrId, 5.1, 5.1);
+          cells.push(
+            [
+              "<w:tc>",
+              `<w:tcPr><w:tcW w:w="${cmToTwip(5.7)}" w:type="dxa"/></w:tcPr>`,
+              imageXml,
+              "</w:tc>",
+            ].join(""),
+          );
+          imageCounter += 1;
+          docPrId += 1;
+        }
+
+        while (cells.length < 3) {
+          cells.push(
+            [
+              "<w:tc>",
+              `<w:tcPr><w:tcW w:w="${cmToTwip(5.7)}" w:type="dxa"/></w:tcPr>`,
+              "<w:p/>",
+              "</w:tc>",
+            ].join(""),
+          );
+        }
+
+        bodyParts.push(
+          [
+            "<w:tbl>",
+            "<w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblLayout w:type=\"fixed\"/></w:tblPr>",
+            `<w:tblGrid><w:gridCol w:w="${cmToTwip(5.7)}"/><w:gridCol w:w="${cmToTwip(5.7)}"/><w:gridCol w:w="${cmToTwip(5.7)}"/></w:tblGrid>`,
+            "<w:tr>",
+            cells.join(""),
+            "</w:tr>",
+            "</w:tbl>",
+          ].join(""),
+        );
+      }
+    }
   }
 
-  lines.push("}");
-  const rtfBlob = new Blob([lines.join("\r\n")], { type: "text/rtf;charset=utf-8" });
+  const documentXml = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<w:document xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:wp14="http://schemas.microsoft.com/office/word/2010/wordprocessingDrawing" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:w10="urn:schemas-microsoft-com:office:word" xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup" xmlns:wpi="http://schemas.microsoft.com/office/word/2010/wordprocessingInk" xmlns:wne="http://schemas.microsoft.com/office/word/2006/wordml" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" mc:Ignorable="w14 wp14">',
+    "<w:body>",
+    bodyParts.join(""),
+    `<w:sectPr><w:pgSz w:w="${cmToTwip(21)}" w:h="${cmToTwip(29.7)}"/><w:pgMar w:top="${cmToTwip(1.5)}" w:right="${cmToTwip(1.5)}" w:bottom="${cmToTwip(1.5)}" w:left="${cmToTwip(1.5)}" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`,
+    "</w:body></w:document>",
+  ].join("");
+
+  const stylesXml = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+    '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>',
+    '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="34"/></w:rPr></w:style>',
+    '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="Heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>',
+    '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="Heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>',
+    "</w:styles>",
+  ].join("");
+
+  const contentTypesXml = [
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+    '<Default Extension="xml" ContentType="application/xml"/>',
+    '<Default Extension="jpg" ContentType="image/jpeg"/>',
+    '<Default Extension="jpeg" ContentType="image/jpeg"/>',
+    '<Default Extension="png" ContentType="image/png"/>',
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>',
+    '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>',
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>',
+    '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>',
+    "</Types>",
+  ].join("");
+
+  files.push(
+    {
+      name: "[Content_Types].xml",
+      blob: new Blob([contentTypesXml], { type: "application/xml" }),
+    },
+    {
+      name: "_rels/.rels",
+      blob: new Blob(
+        [
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+          '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>',
+          '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>',
+          '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>',
+          "</Relationships>",
+        ].join(""),
+        { type: "application/xml" },
+      ),
+    },
+    {
+      name: "word/document.xml",
+      blob: new Blob([documentXml], { type: "application/xml" }),
+    },
+    {
+      name: "word/styles.xml",
+      blob: new Blob([stylesXml], { type: "application/xml" }),
+    },
+    {
+      name: "word/_rels/document.xml.rels",
+      blob: new Blob(
+        [
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+          relationships.join(""),
+          "</Relationships>",
+        ].join(""),
+        { type: "application/xml" },
+      ),
+    },
+    {
+      name: "docProps/core.xml",
+      blob: new Blob(
+        [
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+          '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+          `<dc:title>${escapeXml(reportTitle)}</dc:title>`,
+          `<dc:creator>${escapeXml("Rydder'n")}</dc:creator>`,
+          `<cp:lastModifiedBy>${escapeXml("Rydder'n")}</cp:lastModifiedBy>`,
+          `<dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>`,
+          `<dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>`,
+          "</cp:coreProperties>",
+        ].join(""),
+        { type: "application/xml" },
+      ),
+    },
+    {
+      name: "docProps/app.xml",
+      blob: new Blob(
+        [
+          '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+          '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">',
+          `<Application>${escapeXml("Rydder'n")}</Application>`,
+          "</Properties>",
+        ].join(""),
+        { type: "application/xml" },
+      ),
+    },
+  );
+
+  const docxZip = await buildStoredZip(files);
+  const docxBlob = new Blob([docxZip], {
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
   const shared = await shareExportedFile(
-    rtfBlob,
-    `${slugify(projectName)}.rtf`,
+    docxBlob,
+    `${slugify(projectName)}.docx`,
     `${reportTitle} - ${projectName}`,
-    "Velg Pages i delingsarket for å åpne rapporten der.",
+    "Velg Pages i delingsarket for å åpne rapporten med bilder og flere sider.",
   );
 
   if (!shared) {
-    window.alert("Pages-dokumentet ble lastet ned som .rtf. Hvis iPhone ikke åpner det direkte, velg Del og deretter Pages.");
+    window.alert("Pages-dokumentet ble lastet ned som .docx. Åpne filen i Pages for å se hele rapporten med bilder.");
   }
+}
+
+async function exportDocsPages() {
+  await buildDocumentationDocx();
 }
 
 async function shareEntryImages(entry) {
@@ -1754,8 +2230,9 @@ function bindEvents() {
   });
   elements.docsExportPdfButton.addEventListener("click", () => {
     showDocsReport();
-    document.body.dataset.printMode = "docs";
-    window.print();
+    renderDocumentationPrintReport();
+    document.body.dataset.printMode = "docs-print";
+    window.setTimeout(() => window.print(), 60);
   });
   elements.docsExportPagesButton.addEventListener("click", () => {
     exportDocsPages().catch((error) => {
