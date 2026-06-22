@@ -46,7 +46,7 @@
           </div>
 
           <div class="camera-card">
-            <label for="photoInput" class="camera-button">Ta bilde</label>
+            <button id="openPhotoButton" class="camera-button" type="button">Ta bilde</button>
             <input
               id="photoInput"
               class="visually-hidden"
@@ -251,8 +251,10 @@
             </div>
 
             <div class="camera-actions">
-              <label for="docsCameraInput" class="camera-button">Kamera</label>
-              <label for="docsGalleryInput" class="secondary-button camera-alt-button">Galleri</label>
+              <button id="openDocsCameraButton" class="camera-button" type="button">Kamera</button>
+              <button id="openDocsGalleryButton" class="secondary-button camera-alt-button" type="button">
+                Galleri
+              </button>
               <input
                 id="docsCameraInput"
                 class="visually-hidden"

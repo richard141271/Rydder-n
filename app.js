@@ -78,6 +78,7 @@ const state = {
   isSavingValuation: false,
   isSavingDocEntry: false,
   isSavingDocMap: false,
+  projectRegistrationConfirmed: false,
   documentationDraft: createDocumentationDraft("finding"),
   documentationView: "docsEntryView",
   documentationSearch: "",
@@ -94,6 +95,7 @@ const elements = {
   showRydderenModuleButton: document.querySelector("#showRydderenModuleButton"),
   showDocumentationModuleButton: document.querySelector("#showDocumentationModuleButton"),
   activeProjectSelect: document.querySelector("#activeProjectSelect"),
+  openPhotoButton: document.querySelector("#openPhotoButton"),
   photoInput: document.querySelector("#photoInput"),
   draftPreview: document.querySelector("#draftPreview"),
   previewImage: document.querySelector("#previewImage"),
@@ -154,6 +156,8 @@ const elements = {
   docsEntryTitle: document.querySelector("#docsEntryTitle"),
   docsEntryNumber: document.querySelector("#docsEntryNumber"),
   docsEntryTimestamp: document.querySelector("#docsEntryTimestamp"),
+  openDocsCameraButton: document.querySelector("#openDocsCameraButton"),
+  openDocsGalleryButton: document.querySelector("#openDocsGalleryButton"),
   docsCameraInput: document.querySelector("#docsCameraInput"),
   docsGalleryInput: document.querySelector("#docsGalleryInput"),
   docsDraftImages: document.querySelector("#docsDraftImages"),
@@ -369,6 +373,23 @@ function setActiveModule(moduleName) {
   } else if (state.currentView === "overviewView") {
     renderOverview();
   }
+}
+
+function confirmActiveProjectForRegistration() {
+  const projectName = getActiveProject()?.name || "ukjent prosjekt";
+  if (state.projectRegistrationConfirmed) {
+    return true;
+  }
+
+  const isConfirmed = window.confirm(`Dette registreres i "${projectName}". Er dette riktig?`);
+  if (!isConfirmed) {
+    elements.activeProjectSelect.focus();
+    showOverview();
+    return false;
+  }
+
+  state.projectRegistrationConfirmed = true;
+  return true;
 }
 
 function focusPriceInput() {
@@ -1013,6 +1034,10 @@ function renderDocumentationModule() {
 }
 
 async function saveDraft(action) {
+  if (!confirmActiveProjectForRegistration()) {
+    return;
+  }
+
   if (
     state.isSavingDraft ||
     !state.draft.imageBlob ||
@@ -1107,6 +1132,7 @@ async function handleDocsImages(event) {
 
 async function handleActiveProjectChange() {
   state.activeProjectId = elements.activeProjectSelect.value;
+  state.projectRegistrationConfirmed = false;
   await setActiveProject(state.activeProjectId);
   renderOverview();
   renderDocumentationModule();
@@ -1227,6 +1253,10 @@ async function handleValuationNext() {
 }
 
 async function handleSaveDocEntry() {
+  if (!confirmActiveProjectForRegistration()) {
+    return;
+  }
+
   if (state.isSavingDocEntry) {
     return;
   }
@@ -1552,7 +1582,7 @@ async function installApp() {
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js");
+      navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" });
     });
   }
 }
@@ -1575,6 +1605,12 @@ function setupInstallPrompt() {
 }
 
 function bindEvents() {
+  elements.openPhotoButton.addEventListener("click", () => {
+    if (!confirmActiveProjectForRegistration()) {
+      return;
+    }
+    elements.photoInput.click();
+  });
   elements.photoInput.addEventListener("change", handlePhotoChange);
   elements.activeProjectSelect.addEventListener("change", handleActiveProjectChange);
   elements.backToCaptureButton.addEventListener("click", showRegisterCapture);
@@ -1613,6 +1649,18 @@ function bindEvents() {
   elements.docsNewSampleButton.addEventListener("click", () => showDocsEntry("sample"));
   elements.docsMapButton.addEventListener("click", showDocsMap);
   elements.docsReportsButton.addEventListener("click", showDocsReport);
+  elements.openDocsCameraButton.addEventListener("click", () => {
+    if (!confirmActiveProjectForRegistration()) {
+      return;
+    }
+    elements.docsCameraInput.click();
+  });
+  elements.openDocsGalleryButton.addEventListener("click", () => {
+    if (!confirmActiveProjectForRegistration()) {
+      return;
+    }
+    elements.docsGalleryInput.click();
+  });
   elements.docsCameraInput.addEventListener("change", handleDocsImages);
   elements.docsGalleryInput.addEventListener("change", handleDocsImages);
   elements.docsCategorySelect.addEventListener("change", () => {
