@@ -38,8 +38,8 @@ const DOC_TYPES = [
   { id: "sample", label: "Ny prøve", prefix: "SP", shortLabel: "Prøve" },
 ];
 const DOC_VIEWS = ["docsEntryView", "docsMapView", "docsReportView"];
-const APP_CACHE_VERSION = "v14";
-const APP_COMMIT_FALLBACK = "2e67d86";
+const APP_CACHE_VERSION = "v15";
+const APP_COMMIT_FALLBACK = "44bfffd";
 const REPO_COMMIT_API_URL = "https://api.github.com/repos/richard141271/Rydder-n/commits/main";
 
 function createDocumentationDraft(entryType) {
@@ -1913,16 +1913,24 @@ async function buildDocumentationDocx() {
   let docPrId = 1;
 
   for (const [entryIndex, entry] of entries.entries()) {
+    const docTypeLabel = getDocTypeConfig(entry.entryType).shortLabel;
+    const description = entry.description || "Ingen beskrivelse";
+    const comment = entry.comment || "-";
+    const imageCount = entry.imageCount || entry.images?.length || 0;
     bodyParts.push(createDocxPageBreak());
-    bodyParts.push(createDocxParagraph(`${entry.entryNumber} - ${getDocTypeConfig(entry.entryType).shortLabel}`, { style: "Heading1" }));
+    bodyParts.push(createDocxParagraph(`${entry.entryNumber} - ${docTypeLabel}`, { style: "Heading1" }));
+    bodyParts.push(createDocxParagraph(`Type: ${docTypeLabel}`));
     bodyParts.push(createDocxParagraph(`Kategori: ${entry.category || "-"}`));
+    bodyParts.push(createDocxParagraph(`Kategori / sone: ${entry.category || "-"} · Sone: ${entry.zone || "-"}`));
     bodyParts.push(
       createDocxParagraph(`Dato: ${entry.createdDate || formatDate(entry.createdAt)} ${entry.createdTime || formatTime(entry.createdAt)}`),
     );
     bodyParts.push(createDocxParagraph(`Sone: ${entry.zone || "-"}`));
     bodyParts.push(createDocxParagraph(`Risiko: ${entry.risk || "-"}`));
-    bodyParts.push(createDocxParagraph(`Beskrivelse: ${entry.description || "-"}`));
-    bodyParts.push(createDocxParagraph(`Kommentar: ${entry.comment || "-"}`));
+    bodyParts.push(createDocxParagraph(`Beskrivelse: ${description}`));
+    bodyParts.push(createDocxParagraph(`Kommentar: ${comment}`));
+    bodyParts.push(createDocxParagraph(`Bilder: ${imageCount}`));
+    bodyParts.push(createDocxParagraph(`${imageCount} bilder · Risiko: ${entry.risk || "-"} · Kommentar: ${comment}`));
 
     const coverImage = (entry.images || [])[0];
     if (coverImage) {
