@@ -28,6 +28,7 @@
 - Skjermbilder viste også at dokumentasjonskortene inne i appen brukte feil kortgrid, slik at galleri og tekst la seg oppå hverandre.
 - `Pages` viste feilen `Value is not a sequence`, som peker på delings-/filflyten heller enn selve dokumentinnholdet.
 - Bruker bekreftet at siste versjon faktisk var lastet, så videre feil var reelle UI-/eksportfeil og ikke cache-forveksling.
+- Statisk inspeksjon av DOCX-byggeren viste flere `new Blob(...)`-kall med ren streng som første argument i stedet for en array, noe som matcher WebKit-feilen `Value is not a sequence`.
 
 ## Verification Conclusion
 - Safari-print med blob-URL-er er ikke stabil nok for denne rapporten.
@@ -36,3 +37,4 @@
 - PDF-bygg må ikke trigges i bakgrunnen ved vanlig rapportvisning, bare ved faktisk PDF-eksport.
 - Pages må falle tilbake til nedlasting hvis Safari ikke godtar direkte deling av DOCX-filen.
 - Mobilkortene i rapportoversikten bør være énspaltet på liten skjerm for å unngå at bilde- og tekstblokker kolliderer.
+- Rotårsaken til Pages-feilen er ugyldige `Blob`-konstruktører i DOCX-XML-filene, ikke PDF- eller kortlayouten.

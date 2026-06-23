@@ -38,8 +38,8 @@ const DOC_TYPES = [
   { id: "sample", label: "Ny prøve", prefix: "SP", shortLabel: "Prøve" },
 ];
 const DOC_VIEWS = ["docsEntryView", "docsMapView", "docsReportView"];
-const APP_CACHE_VERSION = "v13";
-const APP_COMMIT_FALLBACK = "692a73f";
+const APP_CACHE_VERSION = "v14";
+const APP_COMMIT_FALLBACK = "2e67d86";
 const REPO_COMMIT_API_URL = "https://api.github.com/repos/richard141271/Rydder-n/commits/main";
 
 function createDocumentationDraft(entryType) {
@@ -2036,14 +2036,14 @@ async function buildDocumentationDocx() {
     {
       name: "_rels/.rels",
       blob: new Blob(
-        [
+        [[
           '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
           '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
           '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>',
           '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>',
           '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>',
           "</Relationships>",
-        ].join(""),
+        ].join("")],
         { type: "application/xml" },
       ),
     },
@@ -2058,19 +2058,19 @@ async function buildDocumentationDocx() {
     {
       name: "word/_rels/document.xml.rels",
       blob: new Blob(
-        [
+        [[
           '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
           '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
           relationships.join(""),
           "</Relationships>",
-        ].join(""),
+        ].join("")],
         { type: "application/xml" },
       ),
     },
     {
       name: "docProps/core.xml",
       blob: new Blob(
-        [
+        [[
           '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
           '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
           `<dc:title>${escapeXml(reportTitle)}</dc:title>`,
@@ -2079,28 +2079,26 @@ async function buildDocumentationDocx() {
           `<dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created>`,
           `<dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified>`,
           "</cp:coreProperties>",
-        ].join(""),
+        ].join("")],
         { type: "application/xml" },
       ),
     },
     {
       name: "docProps/app.xml",
       blob: new Blob(
-        [
+        [[
           '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
           '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">',
           `<Application>${escapeXml("Rydder'n")}</Application>`,
           "</Properties>",
-        ].join(""),
+        ].join("")],
         { type: "application/xml" },
       ),
     },
   );
 
   const docxZip = await buildStoredZip(files);
-  return new Blob([docxZip], {
-    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  });
+  return docxZip.slice(0, docxZip.size, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
 }
 
 async function exportDocsPages() {
