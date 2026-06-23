@@ -638,7 +638,16 @@ async function loadImageFromBlob(blob) {
     const image = await new Promise((resolve, reject) => {
       const element = new Image();
       element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error("Kunne ikke lese bilde"));
+      element.onerror = () => {
+        // #region debug-point F:pdf-image-read-failure
+        reportDebugEvent("F", "loadImageFromBlob", "Image load failed", {
+          type: blob?.type || "",
+          size: blob?.size || 0,
+          urlPrefix: url.slice(0, 32),
+        });
+        // #endregion
+        reject(new Error("Kunne ikke lese bilde"));
+      };
       element.src = url;
     });
     return image;
@@ -711,6 +720,13 @@ async function createOptimizedImageBlob(blob, maxWidth, maxHeight, quality = 0.8
 }
 
 async function createPrintReadyDataUrl(blob, variant = "gallery") {
+  // #region debug-point G:pdf-image-input
+  reportDebugEvent("G", "createPrintReadyDataUrl", "Preparing print image", {
+    variant,
+    type: blob?.type || "",
+    size: blob?.size || 0,
+  });
+  // #endregion
   const optimized =
     variant === "cover"
       ? await createOptimizedImageBlob(blob, 1600, 1200, 0.86)
@@ -1311,6 +1327,13 @@ async function renderDocumentationPrintReport() {
     if (firstImage) {
       const image = document.createElement("img");
       image.className = "docs-print-cover-image";
+      // #region debug-point F:pdf-cover-image
+      reportDebugEvent("F", "renderDocumentationPrintReport:cover", "Rendering cover image", {
+        entryNumber: entry.entryNumber,
+        type: firstImage?.type || "",
+        size: firstImage?.size || 0,
+      });
+      // #endregion
       image.src = await createPrintReadyDataUrl(firstImage, "cover");
       image.alt = `Forsidebilde for ${entry.entryNumber}`;
       coverBody.append(image);
@@ -1352,6 +1375,14 @@ async function renderDocumentationPrintReport() {
         frame.className = "docs-print-thumb";
 
         const image = document.createElement("img");
+        // #region debug-point F:pdf-gallery-image
+        reportDebugEvent("F", "renderDocumentationPrintReport:gallery", "Rendering gallery image", {
+          entryNumber: entry.entryNumber,
+          chunkIndex,
+          type: imageBlob?.type || "",
+          size: imageBlob?.size || 0,
+        });
+        // #endregion
         image.src = await createPrintReadyDataUrl(imageBlob, "gallery");
         image.alt = `${entry.entryNumber} bildegalleri`;
         frame.append(image);

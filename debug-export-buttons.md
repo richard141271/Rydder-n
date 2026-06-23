@@ -1,6 +1,6 @@
 # Debug Session: export-buttons
 - **Status**: [OPEN]
-- **Issue**: `PDF` og `Pages` reagerer ikke på iPhone, og rapportoversikten trenger bedre spacing og visuelt oppsett.
+- **Issue**: `PDF` og `Pages` reagerer ikke på iPhone, og rapportoversikten trenger bedre spacing og visuelt oppsett. Senere oppstod også `PDF-eksport feilet: Kunne ikke lese bilde` for enkelte datasett.
 - **Debug Server**: http://192.168.0.35:7777/event
 - **Log File**: `.dbg/trae-debug-log-export-buttons.ndjson`
 
@@ -19,6 +19,8 @@
 | C | Service worker leverer blandet versjon av filer slik at bindinger og DOM ikke stemmer | Med | Med | Rejected for Safari direct-open test |
 | D | Safari blokkerer eller avbryter tunge handlinger uten synlig feil, og vi mangler runtime-logging | Med | Low | Still possible, but secondary |
 | E | Rapportoversiktens layout er ikke hovedfeilen, men trenger separat visuell finpuss etter funksjonsfeilen | Low | Low | Confirmed by screenshot spacing issues |
+| F | Ett av de nye bildene kan ikke leses av Safari `Image()` i PDF-løpet | High | Low | Pending |
+| G | Ikke-bildeblob eller blob uten gyldig `type` havner i PDF-bildeløpet | Med | Low | Pending |
 
 ## Log Evidence
 - Ingen logger kom tilbake fra debug-serveren under Safari-testen, så mobilsporingen var ikke brukbar i praksis.
