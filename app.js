@@ -201,24 +201,6 @@ const elements = {
   docsEntryCardTemplate: document.querySelector("#docsEntryCardTemplate"),
 };
 
-// #region debug-point A:report-debug-helper
-function reportDebugEvent(hypothesisId, location, msg, data = {}) {
-  fetch("http://192.168.0.35:7777/event", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sessionId: "export-buttons",
-      runId: "pre-fix",
-      hypothesisId,
-      location,
-      msg: `[DEBUG] ${msg}`,
-      data,
-      ts: Date.now(),
-    }),
-  }).catch(() => {});
-}
-// #endregion
-
 function formatDate(timestamp) {
   return new Intl.DateTimeFormat("nb-NO", {
     year: "numeric",
@@ -638,16 +620,7 @@ async function loadImageFromBlob(blob) {
     const image = await new Promise((resolve, reject) => {
       const element = new Image();
       element.onload = () => resolve(element);
-      element.onerror = () => {
-        // #region debug-point F:pdf-image-read-failure
-        reportDebugEvent("F", "loadImageFromBlob", "Image load failed", {
-          type: blob?.type || "",
-          size: blob?.size || 0,
-          urlPrefix: url.slice(0, 32),
-        });
-        // #endregion
-        reject(new Error("Kunne ikke lese bilde"));
-      };
+      element.onerror = () => reject(new Error("Kunne ikke lese bilde"));
       element.src = url;
     });
     return image;
@@ -720,13 +693,6 @@ async function createOptimizedImageBlob(blob, maxWidth, maxHeight, quality = 0.8
 }
 
 async function createPrintReadyDataUrl(blob, variant = "gallery") {
-  // #region debug-point G:pdf-image-input
-  reportDebugEvent("G", "createPrintReadyDataUrl", "Preparing print image", {
-    variant,
-    type: blob?.type || "",
-    size: blob?.size || 0,
-  });
-  // #endregion
   const optimized =
     variant === "cover"
       ? await createOptimizedImageBlob(blob, 1600, 1200, 0.86)
@@ -1327,13 +1293,6 @@ async function renderDocumentationPrintReport() {
     if (firstImage) {
       const image = document.createElement("img");
       image.className = "docs-print-cover-image";
-      // #region debug-point F:pdf-cover-image
-      reportDebugEvent("F", "renderDocumentationPrintReport:cover", "Rendering cover image", {
-        entryNumber: entry.entryNumber,
-        type: firstImage?.type || "",
-        size: firstImage?.size || 0,
-      });
-      // #endregion
       image.src = await createPrintReadyDataUrl(firstImage, "cover");
       image.alt = `Forsidebilde for ${entry.entryNumber}`;
       coverBody.append(image);
@@ -1375,14 +1334,6 @@ async function renderDocumentationPrintReport() {
         frame.className = "docs-print-thumb";
 
         const image = document.createElement("img");
-        // #region debug-point F:pdf-gallery-image
-        reportDebugEvent("F", "renderDocumentationPrintReport:gallery", "Rendering gallery image", {
-          entryNumber: entry.entryNumber,
-          chunkIndex,
-          type: imageBlob?.type || "",
-          size: imageBlob?.size || 0,
-        });
-        // #endregion
         image.src = await createPrintReadyDataUrl(imageBlob, "gallery");
         image.alt = `${entry.entryNumber} bildegalleri`;
         frame.append(image);
@@ -2256,22 +2207,6 @@ function registerServiceWorker() {
 }
 
 function setupInstallPrompt() {
-  // #region debug-point A:global-errors
-  window.addEventListener("error", (event) => {
-    reportDebugEvent("A", "window:error", "Global error", {
-      message: event.message,
-      source: event.filename,
-      line: event.lineno,
-      column: event.colno,
-    });
-  });
-  window.addEventListener("unhandledrejection", (event) => {
-    reportDebugEvent("A", "window:unhandledrejection", "Unhandled rejection", {
-      reason: String(event.reason?.message || event.reason || ""),
-    });
-  });
-  // #endregion
-
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     state.deferredInstallPrompt = event;
@@ -2395,11 +2330,6 @@ function bindEvents() {
     renderDocumentationReport();
   });
   elements.docsClearSearchButton.addEventListener("click", () => {
-    // #region debug-point E:clear-search-click
-    reportDebugEvent("E", "bindEvents:docsClearSearchButton", "Clear search button clicked", {
-      searchValue: elements.docsSearchInput.value,
-    });
-    // #endregion
     state.documentationSearch = "";
     elements.docsSearchInput.value = "";
     renderDocumentationReport();
@@ -2408,51 +2338,21 @@ function bindEvents() {
     setDocsExportButtonsBusy(true, "pdf");
     Promise.resolve()
       .then(async () => {
-        // #region debug-point B:pdf-click
-        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "PDF button clicked", {
-          entries: getFilteredEvidenceEntries().length,
-          activeProjectId: state.activeProjectId,
-        });
-        // #endregion
         showDocsReport();
-        // #region debug-point B:pdf-before-render
-        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "Before renderDocumentationPrintReport", {});
-        // #endregion
         await renderDocumentationPrintReport();
         await waitForImagesInContainer(elements.docsPrintReport);
-        // #region debug-point B:pdf-after-render
-        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "After renderDocumentationPrintReport", {
-          printPages: elements.docsPrintReport?.children.length || 0,
-        });
-        // #endregion
         document.body.dataset.printMode = "docs-print";
         window.setTimeout(() => window.print(), 120);
       })
       .catch((error) => {
         window.alert(`PDF-eksport feilet: ${error?.message || String(error)}`);
-        reportDebugEvent("B", "bindEvents:docsExportPdfButton", "PDF export failed", {
-          message: error?.message || String(error),
-          stack: error?.stack || "",
-        });
       })
       .finally(() => {
         setDocsExportButtonsBusy(false);
       });
   });
   elements.docsExportPagesButton.addEventListener("click", () => {
-    // #region debug-point C:pages-click
-    reportDebugEvent("C", "bindEvents:docsExportPagesButton", "Pages button clicked", {
-      entries: getFilteredEvidenceEntries().length,
-      activeProjectId: state.activeProjectId,
-    });
-    // #endregion
     exportDocsPages().catch((error) => {
-      // #region debug-point C:pages-catch
-      reportDebugEvent("C", "bindEvents:docsExportPagesButton", "Pages export failed", {
-        message: error?.message || String(error),
-        stack: error?.stack || "",
-      });
-      // #endregion
       console.error("Kunne ikke eksportere Pages-fil", error);
     });
   });
@@ -2480,13 +2380,6 @@ async function loadState() {
 
 async function init() {
   renderAppVersionBadge().catch(() => {});
-  // #region debug-point D:init-start
-  reportDebugEvent("D", "init", "Init start", {
-    hasPdfButton: Boolean(elements.docsExportPdfButton),
-    hasPagesButton: Boolean(elements.docsExportPagesButton),
-    hasPrintReport: Boolean(elements.docsPrintReport),
-  });
-  // #endregion
   renderCategoryButtons();
   renderActionButtons();
   elements.docsCategorySelect.replaceChildren(...createCategoryOptions());
@@ -2497,12 +2390,6 @@ async function init() {
   renderOverview();
   renderDocumentationModule();
   showRegisterCapture();
-  // #region debug-point D:init-complete
-  reportDebugEvent("D", "init", "Init complete", {
-    documentationView: state.documentationView,
-    currentView: state.currentView,
-  });
-  // #endregion
 }
 
 init().catch((error) => {
